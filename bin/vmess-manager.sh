@@ -7,9 +7,17 @@ if [[ -f "$APP_DIR/core/colors.sh" ]]; then
     source "$APP_DIR/core/colors.sh"
 fi
 
-pause_menu() {
+sync_xray() {
     echo
-    read -r -p "Tekan Enter untuk kembali..."
+    echo "Sinkronisasi Xray..."
+    if /opt/nagara-tunnel-lite/core/xray-sync.sh; then
+        echo -e "${GREEN}Xray berhasil disinkronkan.${RESET}"
+        return 0
+    else
+        echo -e "${RED}Sinkronisasi Xray gagal.${RESET}"
+        echo -e "${YELLOW}User sudah tersimpan di database, tetapi Xray belum menggunakan perubahan ini.${RESET}"
+        return 1
+    fi
 }
 
 header() {
@@ -121,6 +129,8 @@ expiry="$(date -d "+${active_days} days" +%Y-%m-%d)"
         VALUES
         ('$username', 'vmess', '$uuid', '$limit_ip', '$expiry', 'active');
     "
+
+    sync_xray
 
     echo
     echo -e "${GREEN}VMess user berhasil dibuat.${RESET}"
