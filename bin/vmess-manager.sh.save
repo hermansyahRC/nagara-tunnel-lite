@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+
+APP_DIR="/opt/nagara-tunnel-lite"
+DB="$APP_DIR/users/users.db"
+
+if [[ -f "$APP_DIR/core/colors.sh" ]]; then
+    source "$APP_DIR/core/colors.sh"
+fi
+
+pause_menu() {
+    echo
+    read -r -p "Tekan Enter untuk kembali..."
+}
+
+header() {
+    clear
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${CYAN}║${WHITE}                  VMESS MANAGER                       ${CYAN}║${RESET}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${RESET}"
+    echo
+}
+
+show_menu() {
+    echo "┌────────────────────────────────────────────────────────┐"
+    echo "│                                                        │"
+    echo "│     1. ADD VMESS USER                                  │"
+    echo "│     2. DELETE VMESS USER                               │"
+    echo "│     3. RENEW VMESS USER                                │"
+    echo "│     4. LIST VMESS USERS                                │"
+    echo "│     5. USER DETAIL                                     │"
+    echo "│     6. DISABLE / ENABLE USER                           │"
+    echo "│     7. CHANGE IP LIMIT                                 │"
+    echo "│     8. GENERATE CONFIG                                 │"
+    echo "│     9. EXPORT CONFIG                                   │"
+    echo "│     0. BACK                                             │"
+    echo "│                                                        │"
+    echo "└────────────────────────────────────────────────────────┘"
+    echo
+    printf "  Select From Options [ 0 - 9 ] : "
+}
+
+list_users() {
+    header
+    echo "VMess Users"
+    echo "────────────────────────────────────────────────────────"
+
+    if [[ ! -f "$DB" ]]; then
+        echo "Database belum tersedia."
+        pause_menu
+        return
+    fi
+
+    sqlite3 -header -column "$DB" "
+        SELECT
+            username AS USERNAME,
+            expiry_date AS EXPIRED,
+            limit_ip AS LIMIT_IP,
+            status AS STATUS
+        FROM users
+        WHERE LOWER(protocol)='vmess'
+        ORDER BY id;
+    "
+
+    pause_menu
+}
+
+main() {
+    while true; do
+        header
+        show_menu
+
+        read -r choice
+
+        case "$choice" in
+1)
+    header
+    echo "ADD VMESS USER"
+    echo "────────────────────────────────────────────────────────"
+    echo
+
+    read -r -p "Username       : " username
+    read -r -p "Active Days    : " active_days
+    read -r -p "Limit IP       : " limit_ip
+
+if [[ -z "$username" || -z "$active_days" || -z "$limit_ip" ]]; then
+        echo
+        echo -e "${RED}Semua field wajib diisi.${RESET}"
+        pause_menu
+        continue
+    fi
+
+    if ! [[ "$limit_ip" =~ ^[0-9]+$ ]] || [[ "$limit_ip" -lt 1 ]]; then
+        echo
+        echo -e "${RED}Limit IP harus berupa angka minimal 1.${RESET}"
+        pause_menu
+        continue
+    fi
+
+if ! [[ "$active_days" =~ ^[0-9]+$ ]] || [[ "$active_days" -lt 1 ]]; then
+    echo
+    echo -e "${RED}Active Days harus berupa angka minimal 1.${RESET}"
+    pause_menu
+    continue
+fi
+
+expiry="$(date -d "+${active_days} days" +%Y-%m-%d)"
+
+    if sqlite3 "$DB" \
+        "SELECT 1 FROM users WHERE username='$username' LIMIT 1;" | grep -q 1; then
+        echo
+        echo -e "${RED}Username sudah digunakan.${RESET}"
+        pause_menu
+        continue
+    fi
+
+    uuid="$(cat /proc/sys/kernel/random/uuid)"
+
+    sqlite3 "$DB" "
+        INSERT INTO users
+        (username, protocol, uuid, limit_ip, expiry_date, status)
+        VALUES
+        ('$username', 'vmess', '$uuid', '$limit_ip', '$expiry', 'active');
+    "
+
+    echo
+    echo -e "${GREEN}VMess user berhasil dibuat.${RESET}"
+    echo
+    echo "Username : $username"
+    echo "Duration : $active_days days"    
+    echo "UUID     : $uuid"
+    echo "Expiry   : $expiry"
+    echo "Limit IP : $limit_ip"
+    echo "Status   : active"
+
+    pause_menu
+    ;;
+
+            2)
+                header
+                echo "DELETE VMESS USER"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+
+
+
+            4)
+                list_users
+                ;;
+            5)
+                header
+                echo "USER DETAIL"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+                ;;
+            6)
+                header
+                echo "DISABLE / ENABLE USER"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+                ;;
+            7)
+                header
+                echo "CHANGE IP LIMIT"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+                ;;
+            8)
+                header
+                echo "GENERATE CONFIG"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+                ;;
+            9)
+                header
+                echo "EXPORT CONFIG"
+                echo
+                echo "Belum diaktifkan."
+                pause_menu
+                ;;
+            0)
+                return
+                ;;
+            *)
+                echo
+                echo -e "${RED}Pilihan tidak valid.${RESET}"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+main
