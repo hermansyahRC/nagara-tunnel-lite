@@ -222,6 +222,8 @@ expiry="$(date -d "+${active_days} days" +%Y-%m-%d)"
           AND LOWER(protocol)='vmess';
     "
 
+    sync_xray
+
     echo
     echo -e "${GREEN}VMess user berhasil dihapus.${RESET}"
     echo
