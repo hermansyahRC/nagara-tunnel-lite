@@ -179,16 +179,18 @@ show_menu() {
     echo "  1. SET DOMAIN"
     echo "  2. CHECK DOMAIN"
     echo "  3. DOMAIN STATUS"
+    echo "  4. NGINX MANAGER"
     echo "  0. BACK"
     echo
     echo "────────────────────────────────────────────────────────"
     echo
-    read -r -p "  Select From Options [ 0 - 3 ] : " choice
+    read -r -p "  Select From Options [ 0 - 4 ] : " choice
 
     case "$choice" in
         1) set_domain ;;
         2) check_domain ;;
         3) domain_status ;;
+        4) bash "$APP_DIR/bin/nginx-manager.sh" ;;
         0) return 0 ;;
         *) echo; echo "✗ Pilihan tidak valid."; sleep 1 ;;
     esac
