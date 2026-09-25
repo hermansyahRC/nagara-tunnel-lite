@@ -576,23 +576,25 @@ main() {
 
             pause_menu
             ;;
-
         8)
             header
             echo "GENERATE VMESS CONFIG"
             echo "────────────────────────────────────────────────────────"
 
-            if ! select_user; then
-                [[ $? -eq 2 ]] && continue
+            select_user
+            select_status=$?
+
+            if (( select_status != 0 )); then
+                (( select_status == 2 )) && continue
                 pause_menu
                 continue
             fi
 
             IFS='|' read -r username expiry limit_ip status <<< "$SELECTED_USER"
 
-            user_data="$(
-                sqlite3 -separator '|' "$DB" "
-                    SELECT uuid, password, status
+            uuid="$(
+                sqlite3 "$DB" "
+                    SELECT uuid
                     FROM users
                     WHERE username='$username'
                       AND LOWER(protocol)='vmess'
@@ -600,28 +602,29 @@ main() {
                 "
             )"
 
-            IFS='|' read -r uuid password status <<< "$user_data"
-
             echo
-            echo "VMess CONFIG"
+            echo "VMESS CONFIG"
             echo "────────────────────────────────────────────────────────"
             echo
-            echo "Username     : $username"
-            echo "UUID         : $uuid"
-            echo "Expiry       : $expiry"
-            echo "Limit IP     : $limit_ip"
-            echo "Status       : $status"
+            echo "Username : $username"
+            echo "UUID     : $uuid"
+            echo "Server   : abscell.bunalitori.web.id"
+            echo "Port     : 443"
+            echo "TLS      : true"
+            echo "Network  : ws"
+            echo "Path     : /vmess-ws"
+            echo "Alter ID : 0"
+            echo "Security : auto"
+            echo "Expiry   : $expiry"
+            echo "Limit IP : $limit_ip"
+            echo "Status   : $status"
             echo
-            echo "Config account berhasil dibuat."
-            echo
-            echo "Catatan:"
-            echo "Endpoint server belum dikonfigurasi."
-            echo "Domain / Port / TLS / Transport akan diambil"
-            echo "dari konfigurasi server pada tahap berikutnya."
+            echo "VMess endpoint siap digunakan."
             echo
 
             pause_menu
             ;;
+
 
         0)
             return
