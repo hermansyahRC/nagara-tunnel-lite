@@ -1,0 +1,20 @@
+# Runtime / database
+users/*.db
+runtime/
+logs/
+
+# Server backups
+backups/
+
+# Temporary / backup files
+*.bak
+*.bak-*
+*.tmp
+
+# Local secrets
+.env
+*.key
+*.pem
+
+# OS files
+.DS_Store
