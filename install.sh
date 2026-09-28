@@ -671,7 +671,7 @@ ask_domain() {
     echo "Masukkan domain yang sudah diarahkan ke VPS."
     echo "Contoh: vpn.example.com"
     echo
-    read -r -p "Domain: " domain
+    read -r -p "Domain: " domain </dev/tty
 
     if [[ -z "${domain}" ]]; then
         warning "Domain kosong. Instalasi tetap dilanjutkan."
