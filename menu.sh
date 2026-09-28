@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 APP_DIR="/opt/nagara-tunnel-lite"
-CONFIG_FILE="$APP_DIR/config/settings.conf"
+CONFIG_FILE="$APP_DIR/config/config.conf"
 DB_FILE="$APP_DIR/users/users.db"
 
 # =========================
