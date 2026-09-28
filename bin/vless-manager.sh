@@ -10,6 +10,10 @@ set -u
 APP_DIR="/opt/nagara-tunnel-lite"
 DB="$APP_DIR/users/users.db"
 
+if [[ -f "$APP_DIR/config/config.conf" ]]; then
+    source "$APP_DIR/config/config.conf"
+fi
+
 # ============================================================
 # COLORS
 # ============================================================
@@ -87,7 +91,7 @@ show_vless_links() {
     local username="$1"
     local uuid="$2"
 
-    local domain="abscell.bunalitori.web.id"
+    local domain="$DOMAIN"
     local encoded_path="%2Fnagara-ws"
     local encoded_name
 
