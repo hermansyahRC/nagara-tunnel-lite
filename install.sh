@@ -3,10 +3,12 @@
 set -Eeuo pipefail
 
 APP_NAME="Nagara Tunnel Lite"
-APP_VERSION="2.0.0"
+APP_VERSION="2.1.0"
+
 APP_DIR="/opt/nagara-tunnel-lite"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="/var/log/nagara-tunnel-lite"
+
 BIN_LINK="/usr/local/bin/menu"
 
 RED='\033[0;31m'
@@ -49,8 +51,8 @@ check_os() {
     . /etc/os-release
 
     if [[ "${ID}" != "ubuntu" ]]; then
-        warning "Nagara Tunnel Lite saat ini ditargetkan untuk Ubuntu."
-        warning "OS terdeteksi: ${PRETTY_NAME}"
+        error "Nagara Tunnel Lite membutuhkan Ubuntu."
+        error "OS terdeteksi: ${PRETTY_NAME}"
         exit 1
     fi
 
@@ -58,7 +60,7 @@ check_os() {
 }
 
 update_system() {
-    log "Memperbarui daftar paket..."
+    log "Memperbarui sistem..."
 
     export DEBIAN_FRONTEND=noninteractive
 
@@ -90,9 +92,465 @@ install_dependencies() {
         procps \
         lsof \
         nano \
-        cron
+        cron \
+        nginx \
+        certbot \
+        python3-certbot-nginx \
+        dropbear \
+        haproxy \
+        fail2ban
 
-    success "Dependency dasar selesai."
+    success "Dependency dan service utama selesai."
+}
+
+install_xray() {
+    log "Memasang Xray..."
+
+    local xray_installer="/tmp/nagara-xray-install.sh"
+
+    if ! curl -fsSL \
+        "https://github.com/XTLS/Xray-install/raw/main/install-release.sh" \
+        -o "${xray_installer}"; then
+        warning "Gagal mengunduh installer Xray."
+        return 1
+    fi
+
+    if ! bash -n "${xray_installer}"; then
+        warning "Installer Xray tidak lolos pengecekan sintaks."
+        rm -f "${xray_installer}"
+        return 1
+    fi
+
+    if ! bash "${xray_installer}"; then
+        warning "Instalasi Xray gagal."
+        rm -f "${xray_installer}"
+        return 1
+    fi
+
+    rm -f "${xray_installer}"
+
+    if command -v xray >/dev/null 2>&1; then
+        success "Xray berhasil dipasang: $(xray -version | head -n 1)"
+    else
+        warning "Binary Xray belum ditemukan."
+        return 1
+    fi
+}
+
+
+create_xray_config() {
+    log "Menyiapkan konfigurasi Xray..."
+
+    local xray_dir="/usr/local/etc/xray"
+    local xray_config="${xray_dir}/config.json"
+
+    mkdir -p "${xray_dir}"
+    mkdir -p /var/log/xray
+
+    if [[ -f "${xray_config}" ]]; then
+        cp -a "${xray_config}" "${xray_config}.nagara.bak"
+    fi
+
+    cat > "${xray_config}" <<'XRAY_CONFIG'
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log"
+  },
+  "stats": {},
+  "api": {
+    "services": [
+      "StatsService"
+    ],
+    "tag": "api"
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true
+    }
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 10001,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/nagara-ws"
+        }
+      },
+      "tag": "vless-ws"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10002,
+      "protocol": "vmess",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/vmess-ws"
+        }
+      },
+      "tag": "vmess-ws"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10003,
+      "protocol": "trojan",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/trojan-ws"
+        }
+      },
+      "tag": "trojan-ws"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10004,
+      "protocol": "vmess",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vmess-grpc"
+        }
+      },
+      "tag": "vmess-grpc"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10005,
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": {
+          "serviceName": "vless-grpc"
+        }
+      },
+      "tag": "vless-grpc"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      },
+      "tag": "api"
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "freedom",
+      "tag": "api"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "blocked"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      }
+    ]
+  }
+}
+XRAY_CONFIG
+
+    if xray -test -config "${xray_config}" >/dev/null 2>&1; then
+        success "Konfigurasi Xray + API valid."
+    else
+        warning "Konfigurasi Xray tidak valid."
+        return 1
+    fi
+}
+
+configure_nginx() {
+    log "Menyiapkan konfigurasi Nginx..."
+
+    local domain
+    domain="$(get_domain)"
+
+    if [[ -z "${domain}" ]]; then
+        warning "Domain belum diatur. Nginx akan memakai konfigurasi dasar."
+        return 0
+    fi
+
+    mkdir -p /etc/nginx/sites-available
+    mkdir -p /etc/nginx/sites-enabled
+
+    cat > "/etc/nginx/sites-available/nagara-tunnel" <<NGINX
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name ${domain};
+
+    location /nagara-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /vmess-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /trojan-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /vmess-grpc {
+        grpc_pass grpc://127.0.0.1:10004;
+    }
+
+    location /vless-grpc {
+        grpc_pass grpc://127.0.0.1:10005;
+    }
+
+    location / {
+        return 404;
+    }
+}
+NGINX
+
+    rm -f /etc/nginx/sites-enabled/default
+    ln -sf /etc/nginx/sites-available/nagara-tunnel \
+        /etc/nginx/sites-enabled/nagara-tunnel
+
+    if nginx -t >/dev/null 2>&1; then
+        systemctl enable nginx >/dev/null 2>&1 || true
+        systemctl restart nginx >/dev/null 2>&1 || true
+        success "Konfigurasi Nginx berhasil."
+    else
+        warning "Konfigurasi Nginx tidak valid."
+        return 1
+    fi
+}
+
+configure_ssl() {
+    log "Menyiapkan SSL Let's Encrypt..."
+
+    local domain
+    domain="$(get_domain)"
+
+    if [[ -z "${domain}" ]]; then
+        warning "Domain belum diatur. SSL dilewati."
+        return 0
+    fi
+
+    if ! command -v certbot >/dev/null 2>&1; then
+        warning "Certbot belum tersedia. SSL dilewati."
+        return 0
+    fi
+
+    if ! getent hosts "${domain}" >/dev/null 2>&1; then
+        warning "Domain ${domain} belum bisa di-resolve. SSL dilewati."
+        return 0
+    fi
+
+    log "Mencoba menerbitkan sertifikat untuk ${domain}..."
+
+    if certbot --nginx \
+        --non-interactive \
+        --agree-tos \
+        --register-unsafely-without-email \
+        --redirect \
+        -d "${domain}"; then
+
+        success "SSL berhasil dipasang untuk ${domain}."
+
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx >/dev/null 2>&1 || true
+            success "Nginx berhasil dimuat ulang setelah SSL."
+        else
+            warning "Konfigurasi Nginx setelah SSL tidak valid."
+            return 1
+        fi
+    else
+        warning "SSL belum berhasil dipasang."
+        warning "Instalasi tetap dilanjutkan tanpa SSL."
+    fi
+}
+
+configure_dropbear() {
+    log "Menyiapkan Dropbear..."
+
+    local config="/etc/default/dropbear"
+
+    if [[ -f "${config}" ]]; then
+        cp -a "${config}" "${config}.nagara.bak"
+    fi
+
+    cat > "${config}" <<'DROPBEAR'
+# Nagara Tunnel Lite - Dropbear
+
+NO_START=0
+DROPBEAR_PORT=2222
+DROPBEAR_EXTRA_ARGS=""
+DROPBEAR
+    if systemctl enable dropbear >/dev/null 2>&1; then
+        systemctl restart dropbear >/dev/null 2>&1 || true
+    fi
+
+    if systemctl is-active --quiet dropbear 2>/dev/null; then
+        success "Dropbear aktif pada port 2222."
+    else
+        warning "Dropbear belum aktif."
+    fi
+}
+
+configure_haproxy() {
+    log "Menyiapkan HAProxy..."
+
+    local config="/etc/haproxy/haproxy.cfg"
+
+    if [[ -f "${config}" ]]; then
+        cp -a "${config}" "${config}.nagara.bak"
+    fi
+
+    cat > "${config}" <<'HAPROXY'
+#---------------------------------------------------------------------
+# Nagara Tunnel Lite - HAProxy
+#---------------------------------------------------------------------
+
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    daemon
+
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+
+defaults
+    log global
+    mode tcp
+
+    option dontlognull
+
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+
+# HAProxy belum mengambil port publik.
+# Nginx tetap menangani port 80 dan 443.
+#
+# Frontend/backend dapat ditambahkan pada tahap berikutnya.
+HAPROXY
+
+    if haproxy -c -f "${config}" >/dev/null 2>&1; then
+        systemctl enable haproxy >/dev/null 2>&1 || true
+        systemctl restart haproxy >/dev/null 2>&1 || true
+
+        if systemctl is-active --quiet haproxy 2>/dev/null; then
+            success "HAProxy aktif."
+        else
+            warning "HAProxy terpasang tetapi belum aktif."
+        fi
+    else
+        warning "Konfigurasi HAProxy tidak valid."
+        return 1
+    fi
+}
+
+configure_fail2ban() {
+    log "Menyiapkan Fail2ban..."
+
+    mkdir -p /etc/fail2ban/jail.d
+    mkdir -p /etc/fail2ban/filter.d
+
+    cat > /etc/fail2ban/filter.d/nagara-dropbear.conf <<'DROPBEAR_FILTER'
+[Definition]
+failregex = ^.*dropbear.*(Exit before auth|Bad password|Auth error|authentication failed).*$
+ignoreregex =
+DROPBEAR_FILTER
+
+    cat > /etc/fail2ban/jail.d/nagara-ssh.conf <<'FAIL2BAN'
+[sshd]
+enabled = true
+port = 22
+backend = systemd
+maxretry = 5
+findtime = 10m
+bantime = 1h
+
+[nagara-dropbear]
+enabled = true
+port = 2222
+filter = nagara-dropbear
+backend = systemd
+maxretry = 5
+findtime = 10m
+bantime = 1h
+FAIL2BAN
+
+    if fail2ban-client -t >/dev/null 2>&1; then
+        systemctl enable fail2ban >/dev/null 2>&1 || true
+        systemctl restart fail2ban >/dev/null 2>&1 || true
+
+        if systemctl is-active --quiet fail2ban 2>/dev/null; then
+            success "Fail2ban aktif."
+        else
+            warning "Fail2ban terpasang tetapi belum aktif."
+        fi
+    else
+        warning "Konfigurasi Fail2ban belum valid."
+        return 1
+    fi
 }
 
 create_directories() {
@@ -113,7 +571,7 @@ create_directories() {
 }
 
 copy_project() {
-    log "Menyalin file Nagara Tunnel Lite..."
+    log "Menyiapkan file Nagara Tunnel Lite..."
 
     if [[ "${REPO_DIR}" != "${APP_DIR}" ]]; then
         cp -a "${REPO_DIR}/." "${APP_DIR}/"
@@ -124,13 +582,54 @@ copy_project() {
     chmod +x "${APP_DIR}/bin/"*.sh 2>/dev/null || true
     chmod +x "${APP_DIR}/core/"*.sh 2>/dev/null || true
 
-    success "File aplikasi tersalin."
+    success "File aplikasi siap."
 }
 
-create_settings() {
-    log "Membuat konfigurasi dasar..."
+ask_domain() {
+    local domain
 
-    cat > "${APP_DIR}/config/settings.conf" <<EOF
+    echo
+    echo "=========================================="
+    echo "        NAGARA TUNNEL LITE - DOMAIN"
+    echo "=========================================="
+    echo
+    echo "Masukkan domain yang sudah diarahkan ke VPS."
+    echo "Contoh: vpn.example.com"
+    echo
+    read -r -p "Domain: " domain
+
+    if [[ -z "${domain}" ]]; then
+        warning "Domain kosong. Instalasi tetap dilanjutkan."
+        return 0
+    fi
+
+    if [[ ! "${domain}" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+        warning "Format domain terlihat tidak valid."
+        return 0
+    fi
+
+    mkdir -p "${APP_DIR}/config"
+
+    if [[ -f "${APP_DIR}/config/config.conf" ]]; then
+        sed -i "s/^DOMAIN=.*/DOMAIN=\"${domain}\"/" \
+            "${APP_DIR}/config/config.conf"
+    fi
+
+    success "Domain disimpan: ${domain}"
+}
+
+get_domain() {
+    local config="${APP_DIR}/config/config.conf"
+
+    if [[ -f "${config}" ]]; then
+        grep '^DOMAIN=' "${config}" 2>/dev/null | head -n 1 | cut -d '"' -f 2
+    fi
+}
+
+create_config() {
+    log "Membuat konfigurasi Nagara..."
+
+    cat > "${APP_DIR}/config/config.conf" <<EOF_CONFIG
 # Nagara Tunnel Lite
 APP_NAME="${APP_NAME}"
 APP_VERSION="${APP_VERSION}"
@@ -138,29 +637,28 @@ APP_VERSION="${APP_VERSION}"
 APP_DIR="${APP_DIR}"
 LOG_DIR="${LOG_DIR}"
 
-XRAY_ENABLED="false"
-NGINX_ENABLED="false"
-SSL_ENABLED="false"
-HAPROXY_ENABLED="false"
-DROPBEAR_ENABLED="false"
-
 DOMAIN=""
-SSL_EMAIL=""
+NGINX_ENABLED="true"
+SSL_ENABLED="false"
+XRAY_ENABLED="true"
+HAPROXY_ENABLED="true"
+DROPBEAR_ENABLED="true"
+FAIL2BAN_ENABLED="true"
 
 VMESS_ENABLED="true"
 VLESS_ENABLED="true"
 TROJAN_ENABLED="true"
-EOF
+EOF_CONFIG
 
-    success "Konfigurasi dasar dibuat."
+    success "Konfigurasi utama dibuat."
 }
 
 create_database() {
     log "Membuat database user..."
 
-    DB="${APP_DIR}/users/users.db"
+    local db="${APP_DIR}/users/users.db"
 
-    sqlite3 "${DB}" <<'SQL'
+    sqlite3 "${db}" <<'SQL'
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
@@ -175,32 +673,62 @@ CREATE TABLE IF NOT EXISTS users (
 );
 SQL
 
-    chmod 600 "${DB}"
+    chmod 600 "${db}"
 
     success "Database siap."
 }
 
 create_nagara_command() {
-    log "Membuat command menu..."
+    log "Membuat command Nagara..."
 
-    cat > "${BIN_LINK}" <<EOF
-#!/bin/bash
+    cat > "${BIN_LINK}" <<EOF_MENU
+#!/usr/bin/env bash
 exec "${APP_DIR}/menu.sh" "\$@"
-EOF
+EOF_MENU
 
     chmod +x "${BIN_LINK}"
 
-    # Kompatibilitas command lama
-    cat > /usr/local/bin/nagara <<EOF
-#!/bin/bash
+    cat > /usr/local/bin/nagara <<EOF_NAGARA
+#!/usr/bin/env bash
 exec "${APP_DIR}/menu.sh" "\$@"
-EOF
+EOF_NAGARA
 
     chmod +x /usr/local/bin/nagara
 
     success "Command 'menu' tersedia."
-    success "Command lama 'nagara' tetap tersedia."
+    success "Command 'nagara' tetap tersedia."
 }
+
+enable_services() {
+    log "Mengaktifkan service..."
+
+    local services=(
+        "cron"
+        "nginx"
+        "xray"
+        "dropbear"
+        "haproxy"
+        "fail2ban"
+    )
+
+    local service
+
+    for service in "${services[@]}"; do
+        if systemctl list-unit-files "${service}.service" >/dev/null 2>&1; then
+            systemctl enable "${service}" >/dev/null 2>&1 || true
+            systemctl restart "${service}" >/dev/null 2>&1 || true
+
+            if systemctl is-active --quiet "${service}" 2>/dev/null; then
+                success "${service}: aktif"
+            else
+                warning "${service}: belum aktif"
+            fi
+        else
+            warning "${service}: service tidak ditemukan"
+        fi
+    done
+}
+
 
 final_check() {
     log "Menjalankan pengecekan akhir..."
@@ -208,12 +736,28 @@ final_check() {
     local failed=0
 
     [[ -d "${APP_DIR}" ]] || failed=1
-    [[ -f "${APP_DIR}/config/settings.conf" ]] || failed=1
+    [[ -f "${APP_DIR}/config/config.conf" ]] || failed=1
     [[ -f "${APP_DIR}/users/users.db" ]] || failed=1
     [[ -x "${BIN_LINK}" ]] || failed=1
 
+    command -v nginx >/dev/null 2>&1 || failed=1
+    command -v xray >/dev/null 2>&1 || failed=1
+    command -v dropbear >/dev/null 2>&1 || failed=1
+    command -v haproxy >/dev/null 2>&1 || failed=1
+    command -v fail2ban-client >/dev/null 2>&1 || failed=1
+
+    if [[ -f "/usr/local/etc/xray/config.json" ]]; then
+        if ! xray -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
+            warning "Konfigurasi Xray tidak lolos pengecekan."
+            failed=1
+        fi
+    else
+        warning "File konfigurasi Xray tidak ditemukan."
+        failed=1
+    fi
+
     if [[ "${failed}" -eq 0 ]]; then
-        success "Semua pengecekan dasar berhasil."
+        success "Pengecekan akhir berhasil."
     else
         error "Pengecekan akhir menemukan masalah."
         exit 1
@@ -226,33 +770,55 @@ show_complete() {
     echo "║              NAGARA TUNNEL LITE                      ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo
-    echo "  Installation Complete"
+    echo "  Installer foundation selesai."
     echo
     echo "  Version : ${APP_VERSION}"
     echo "  Path    : ${APP_DIR}"
     echo
-    echo "  Jalankan dashboard dengan:"
+    echo "  Service:"
+    echo "    Nginx      : $(systemctl is-active nginx 2>/dev/null || true)"
+    echo "    Dropbear   : $(systemctl is-active dropbear 2>/dev/null || true)"
+    echo "    HAProxy    : $(systemctl is-active haproxy 2>/dev/null || true)"
+    echo "    Fail2ban   : $(systemctl is-active fail2ban 2>/dev/null || true)"
     echo
-    echo "      menu"
+    echo "  Catatan:"
+    echo "  Xray, domain, Nginx reverse proxy, dan SSL"
+    echo "  akan dikonfigurasi pada tahap installer berikutnya."
     echo
 }
+
 
 main() {
     require_root
 
     echo
     log "${APP_NAME} v${APP_VERSION}"
-    log "Memulai instalasi..."
+    log "Nagara Tunnel Lite Installer"
     echo
 
     check_os
     update_system
     install_dependencies
+
     create_directories
     copy_project
-    create_settings
+    create_config
+
+    ask_domain
+
+    install_xray
+    create_xray_config
+
+    configure_nginx
+    configure_ssl
+    configure_dropbear
+    configure_haproxy
+    configure_fail2ban
+
     create_database
     create_nagara_command
+    enable_services
+
     final_check
     show_complete
 }

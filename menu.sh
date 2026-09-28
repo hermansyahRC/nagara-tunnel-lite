@@ -220,7 +220,11 @@ main_menu() {
             4)  run_manager xray-manager.sh ;;
             5)  run_manager domain-manager.sh ;;
             6)  run_manager backup-manager.sh ;;
-            7)  run_manager system-monitor.sh ;;
+            7)
+                run_manager system-monitor.sh
+                echo
+                read -r -p "Tekan Enter untuk kembali ke menu..."
+                ;;
             8)  echo
                 echo "Settings belum diaktifkan."
                 read -r -p "Tekan Enter untuk kembali..."
