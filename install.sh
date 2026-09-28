@@ -809,59 +809,128 @@ final_check() {
     log "Menjalankan pengecekan akhir..."
 
     local failed=0
+    local domain
+    domain="$(get_domain)"
 
-    [[ -d "${APP_DIR}" ]] || failed=1
-    [[ -f "${APP_DIR}/config/config.conf" ]] || failed=1
-    [[ -f "${APP_DIR}/users/users.db" ]] || failed=1
-    [[ -x "${BIN_LINK}" ]] || failed=1
+    echo
+    echo "=============================================================="
+    echo "                    FINAL CHECK"
+    echo "=============================================================="
 
-    command -v nginx >/dev/null 2>&1 || failed=1
-    command -v xray >/dev/null 2>&1 || failed=1
-    command -v dropbear >/dev/null 2>&1 || failed=1
-    command -v haproxy >/dev/null 2>&1 || failed=1
-    command -v fail2ban-client >/dev/null 2>&1 || failed=1
-
-    if [[ -f "/usr/local/etc/xray/config.json" ]]; then
-        if ! xray -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
-            warning "Konfigurasi Xray tidak lolos pengecekan."
-            failed=1
-        fi
+    if [[ -d "${APP_DIR}" ]]; then
+        echo "APP          : OK"
     else
-        warning "File konfigurasi Xray tidak ditemukan."
+        echo "APP          : FAILED"
         failed=1
     fi
+
+    if [[ -f "${APP_DIR}/config/config.conf" ]]; then
+        echo "CONFIG       : OK"
+    else
+        echo "CONFIG       : FAILED"
+        failed=1
+    fi
+
+    if [[ -f "${APP_DIR}/users/users.db" ]]; then
+        echo "DATABASE     : OK"
+    else
+        echo "DATABASE     : FAILED"
+        failed=1
+    fi
+
+    if [[ -x "${BIN_LINK}" ]]; then
+        echo "COMMAND      : OK"
+    else
+        echo "COMMAND      : FAILED"
+        failed=1
+    fi
+
+    echo "--------------------------------------------------------------"
+
+    if command -v xray >/dev/null 2>&1 &&
+       [[ -f "/usr/local/etc/xray/config.json" ]] &&
+       xray -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
+        echo "XRAY         : ON"
+    else
+        echo "XRAY         : FAILED"
+        failed=1
+    fi
+
+    for service in nginx dropbear haproxy fail2ban cron; do
+        if systemctl is-active --quiet "${service}" 2>/dev/null; then
+            echo "$(printf '%-12s' "${service^^}") : ON"
+        else
+            echo "$(printf '%-12s' "${service^^}") : OFF"
+            failed=1
+        fi
+    done
+
+    echo "--------------------------------------------------------------"
+
+    if [[ -n "${domain}" ]]; then
+        local cert_dir="/etc/letsencrypt/live/${domain}"
+
+        if [[ -f "${cert_dir}/fullchain.pem" &&
+              -f "${cert_dir}/privkey.pem" ]]; then
+            echo "SSL          : OK"
+        else
+            echo "SSL          : SKIPPED / NOT AVAILABLE"
+        fi
+    else
+        echo "SSL          : SKIPPED / NO DOMAIN"
+    fi
+
+    echo "=============================================================="
 
     if [[ "${failed}" -eq 0 ]]; then
         success "Pengecekan akhir berhasil."
     else
-        error "Pengecekan akhir menemukan masalah."
-        exit 1
+        error "Pengecekan akhir menemukan service atau komponen yang bermasalah."
+        return 1
     fi
 }
 
 show_complete() {
+    local domain
+    domain="$(get_domain)"
+
     echo
     echo "╔══════════════════════════════════════════════════════╗"
-    echo "║              NAGARA TUNNEL LITE                      ║"
+    echo "║              NAGARA TUNNEL LITE                     ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo
-    echo "  Installer foundation selesai."
+    echo "  Installer selesai."
     echo
     echo "  Version : ${APP_VERSION}"
     echo "  Path    : ${APP_DIR}"
+    echo "  Domain  : ${domain:-belum diatur}"
     echo
     echo "  Service:"
     echo "    Nginx      : $(systemctl is-active nginx 2>/dev/null || true)"
+    echo "    Xray       : $(systemctl is-active xray 2>/dev/null || true)"
     echo "    Dropbear   : $(systemctl is-active dropbear 2>/dev/null || true)"
     echo "    HAProxy    : $(systemctl is-active haproxy 2>/dev/null || true)"
     echo "    Fail2ban   : $(systemctl is-active fail2ban 2>/dev/null || true)"
+    echo "    Cron       : $(systemctl is-active cron 2>/dev/null || true)"
     echo
-    echo "  Catatan:"
-    echo "  Xray, domain, Nginx reverse proxy, dan SSL"
-    echo "  akan dikonfigurasi pada tahap installer berikutnya."
+    echo "  Akses:"
+    echo "    Dashboard  : ${BIN_LINK}"
+    echo "    SSH        : 22"
+    echo "    Dropbear   : 2222"
+    echo "    HTTP       : 80"
+    echo "    HTTPS      : 443"
+    echo
+    echo "  SSL:"
+    if [[ -n "${domain}" &&
+          -f "/etc/letsencrypt/live/${domain}/fullchain.pem" ]]; then
+        echo "    Status     : Aktif"
+    else
+        echo "    Status     : Belum tersedia"
+    fi
+    echo
+    echo "  Nagara Tunnel Lite siap digunakan."
     echo
 }
-
 
 main() {
     require_root
