@@ -936,34 +936,80 @@ main() {
     require_root
 
     echo
-    log "${APP_NAME} v${APP_VERSION}"
-    log "Nagara Tunnel Lite Installer"
+    echo "╔══════════════════════════════════════════════════════╗"
+    echo "║              NAGARA TUNNEL LITE                     ║"
+    echo "║                  INSTALLER V2.1                     ║"
+    echo "╚══════════════════════════════════════════════════════╝"
     echo
 
+    echo "[1/17] Memeriksa sistem..."
     check_os
+
+    echo
+    echo "[2/17] Memperbarui sistem..."
     update_system
+
+    echo
+    echo "[3/17] Menginstal dependency..."
     install_dependencies
 
+    echo
+    echo "[4/17] Menyiapkan direktori..."
     create_directories
+
+    echo
+    echo "[5/17] Menyalin project..."
     copy_project
+
+    echo
+    echo "[6/17] Membuat konfigurasi..."
     create_config
 
+    echo
+    echo "[7/17] Menentukan domain..."
     ask_domain
 
+    echo
+    echo "[8/17] Menginstal Xray..."
     install_xray
+
+    echo
+    echo "[9/17] Membuat konfigurasi Xray..."
     create_xray_config
 
+    echo
+    echo "[10/17] Menyiapkan Nginx..."
     configure_nginx
+
+    echo
+    echo "[11/17] Menyiapkan SSL..."
     configure_ssl
+
+    echo
+    echo "[12/17] Menyiapkan Dropbear..."
     configure_dropbear
+
+    echo
+    echo "[13/17] Menyiapkan HAProxy..."
     configure_haproxy
+
+    echo
+    echo "[14/17] Menyiapkan Fail2ban..."
     configure_fail2ban
 
+    echo
+    echo "[15/17] Membuat database dan command..."
     create_database
     create_nagara_command
+
+    echo
+    echo "[16/17] Mengaktifkan service..."
     enable_services
 
+    echo
+    echo "[17/17] Menjalankan pengecekan akhir..."
     final_check
+
     show_complete
 }
 
