@@ -314,13 +314,18 @@ configure_nginx() {
 
     mkdir -p /etc/nginx/sites-available
     mkdir -p /etc/nginx/sites-enabled
+    mkdir -p /var/www/nagara-acme
 
     cat > "/etc/nginx/sites-available/nagara-tunnel" <<NGINX
 server {
     listen 80;
     listen [::]:80;
-
     server_name ${domain};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/nagara-acme;
+        default_type "text/plain";
+    }
 
     location /nagara-ws {
         proxy_redirect off;
@@ -376,7 +381,7 @@ NGINX
     if nginx -t >/dev/null 2>&1; then
         systemctl enable nginx >/dev/null 2>&1 || true
         systemctl restart nginx >/dev/null 2>&1 || true
-        success "Konfigurasi Nginx berhasil."
+        success "Konfigurasi Nginx HTTP berhasil."
     else
         warning "Konfigurasi Nginx tidak valid."
         return 1
@@ -404,26 +409,96 @@ configure_ssl() {
         return 0
     fi
 
-    log "Mencoba menerbitkan sertifikat untuk ${domain}..."
+    mkdir -p /var/www/nagara-acme
 
-    if certbot --nginx \
+    log "Menerbitkan sertifikat untuk ${domain}..."
+
+    if certbot certonly \
+        --webroot \
+        -w /var/www/nagara-acme \
         --non-interactive \
         --agree-tos \
         --register-unsafely-without-email \
-        --redirect \
         -d "${domain}"; then
 
-        success "SSL berhasil dipasang untuk ${domain}."
+        success "SSL berhasil diterbitkan untuk ${domain}."
+
+        local cert_dir="/etc/letsencrypt/live/${domain}"
+
+        if [[ ! -f "${cert_dir}/fullchain.pem" || ! -f "${cert_dir}/privkey.pem" ]]; then
+            warning "File sertifikat tidak ditemukan."
+            return 1
+        fi
+
+        cat >> "/etc/nginx/sites-available/nagara-tunnel" <<NGINX
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${domain};
+
+    ssl_certificate ${cert_dir}/fullchain.pem;
+    ssl_certificate_key ${cert_dir}/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location /nagara-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /vmess-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /trojan-ws {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:10003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    location /vmess-grpc {
+        grpc_pass grpc://127.0.0.1:10004;
+    }
+
+    location /vless-grpc {
+        grpc_pass grpc://127.0.0.1:10005;
+    }
+
+    location / {
+        return 404;
+    }
+}
+NGINX
 
         if nginx -t >/dev/null 2>&1; then
             systemctl reload nginx >/dev/null 2>&1 || true
-            success "Nginx berhasil dimuat ulang setelah SSL."
+            success "HTTPS 443 berhasil dikonfigurasi."
+            success "HTTP 80 tetap dipertahankan."
         else
-            warning "Konfigurasi Nginx setelah SSL tidak valid."
+            warning "Konfigurasi Nginx HTTPS tidak valid."
             return 1
         fi
     else
-        warning "SSL belum berhasil dipasang."
+        warning "SSL belum berhasil diterbitkan."
         warning "Instalasi tetap dilanjutkan tanpa SSL."
     fi
 }
