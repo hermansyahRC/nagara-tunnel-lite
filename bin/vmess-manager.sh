@@ -4,6 +4,10 @@ APP_DIR="/opt/nagara-tunnel-lite"
 DB="$APP_DIR/users/users.db"
 XRAY_SYNC="$APP_DIR/core/xray-sync.sh"
 
+if [[ -f "$APP_DIR/config/config.conf" ]]; then
+    source "$APP_DIR/config/config.conf"
+fi
+
 if [[ -f "$APP_DIR/core/colors.sh" ]]; then
     source "$APP_DIR/core/colors.sh"
 fi
@@ -203,7 +207,7 @@ show_vmess_links() {
     local username="$1"
     local uuid="$2"
 
-    local domain="abscell.bunalitori.web.id"
+    local domain="$DOMAIN"
     local link_json
     local link_b64
 

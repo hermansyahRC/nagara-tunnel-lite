@@ -64,13 +64,13 @@ count_users() {
     local protocol="$1"
 
     if [[ ! -f "$DB_FILE" ]]; then
-        echo "00"
+        echo "0"
         return
     fi
 
     sqlite3 "$DB_FILE" \
         "SELECT COUNT(*) FROM users WHERE protocol='$protocol' AND status='active';" \
-        2>/dev/null || echo "00"
+        2>/dev/null || echo "0"
 }
 
 count_online() {
@@ -81,9 +81,9 @@ count_online() {
     if [[ -f "$session_db" ]]; then
         sqlite3 "$session_db" \
             "SELECT COUNT(*) FROM sessions WHERE status='online';" \
-            2>/dev/null || echo "00"
+            2>/dev/null || echo "0"
     else
-        echo "00"
+        echo "0"
     fi
 }
 
@@ -144,10 +144,10 @@ draw_accounts() {
     echo "────────────────────────────────────────────────────────"
     echo
 
-    local vmess="00"
-    local vless="00"
-    local trojan="00"
-    local online="00"
+    local vmess="0"
+    local vless="0"
+    local trojan="0"
+    local online="0"
 
     if [[ -f "$DB_FILE" ]]; then
         while IFS='|' read -r protocol count; do

@@ -5,6 +5,10 @@ set -u
 APP_DIR="/opt/nagara-tunnel-lite"
 DB="$APP_DIR/users/users.db"
 
+if [[ -f "$APP_DIR/config/config.conf" ]]; then
+    source "$APP_DIR/config/config.conf"
+fi
+
 RESET='\033[0m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -64,7 +68,8 @@ sync_xray() {
 show_trojan_links() {
     local username="$1"
     local password="$2"
-    local domain="abscell.bunalitori.web.id"
+
+    local domain="$DOMAIN"
     local encoded_name
     local trojan_ws_tls
     local trojan_ws_80

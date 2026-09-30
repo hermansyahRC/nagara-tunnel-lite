@@ -33,6 +33,28 @@ error() {
     echo -e "${RED}[FAIL]${NC} $1"
 }
 
+bootstrap_repo() {
+    local repo_url="https://github.com/hermansyahRC/nagara-tunnel-lite/archive/refs/heads/main.tar.gz"
+    local bootstrap_dir="/tmp/nagara-tunnel-lite"
+    local archive="/tmp/nagara-tunnel-lite.tar.gz"
+
+    if [[ "${NAGARA_BOOTSTRAPPED:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    rm -rf "${bootstrap_dir}" "${archive}"
+    mkdir -p "${bootstrap_dir}"
+
+    curl -fsSL "${repo_url}" -o "${archive}"
+    tar -xzf "${archive}" -C /tmp
+
+    rm -rf "${bootstrap_dir}"
+    mv /tmp/nagara-tunnel-lite-main "${bootstrap_dir}"
+
+    export NAGARA_BOOTSTRAPPED=1
+    exec bash "${bootstrap_dir}/install.sh"
+}
+
 require_root() {
     if [[ "${EUID}" -ne 0 ]]; then
         error "Installer harus dijalankan sebagai root."
@@ -671,7 +693,7 @@ ask_domain() {
     echo "Masukkan domain yang sudah diarahkan ke VPS."
     echo "Contoh: vpn.example.com"
     echo
-    read -r -p "Domain: " domain
+    read -r -p "Domain: " domain </dev/tty
 
     if [[ -z "${domain}" ]]; then
         warning "Domain kosong. Instalasi tetap dilanjutkan."
@@ -1012,5 +1034,9 @@ main() {
 
     show_complete
 }
+
+if [[ ! -d "${REPO_DIR}/bin" || ! -d "${REPO_DIR}/core" ]]; then
+    bootstrap_repo
+fi
 
 main "$@"
