@@ -302,6 +302,191 @@ auto_maintenance_menu() {
 }
 
 # =========================
+# AUTO REBOOT
+# =========================
+AUTO_REBOOT_CONFIG="$APP_DIR/runtime/auto-reboot.conf"
+AUTO_REBOOT_SERVICE="/etc/systemd/system/nagara-auto-reboot.service"
+AUTO_REBOOT_TIMER="/etc/systemd/system/nagara-auto-reboot.timer"
+
+load_auto_reboot() {
+    AUTO_REBOOT_INTERVAL="OFF"
+
+    if [[ -f "$AUTO_REBOOT_CONFIG" ]]; then
+        # shellcheck disable=SC1090
+        source "$AUTO_REBOOT_CONFIG"
+    fi
+
+    [[ -n "${AUTO_REBOOT_INTERVAL:-}" ]] || AUTO_REBOOT_INTERVAL="OFF"
+}
+
+auto_reboot_interval_seconds() {
+    case "$1" in
+        1h)  echo 3600 ;;
+        3h)  echo 10800 ;;
+        6h)  echo 21600 ;;
+        12h) echo 43200 ;;
+        24h) echo 86400 ;;
+        *)   echo 0 ;;
+    esac
+}
+
+auto_reboot_label() {
+    case "$1" in
+        1h)  echo "1 JAM" ;;
+        3h)  echo "3 JAM" ;;
+        6h)  echo "6 JAM" ;;
+        12h) echo "12 JAM" ;;
+        24h) echo "24 JAM" ;;
+        *)   echo "OFF" ;;
+    esac
+}
+
+write_auto_reboot_files() {
+    local interval="$1"
+    local seconds
+
+    seconds="$(auto_reboot_interval_seconds "$interval")"
+
+    mkdir -p "$APP_DIR/runtime"
+
+    if [[ "$interval" == "OFF" || "$seconds" -eq 0 ]]; then
+        rm -f "$AUTO_REBOOT_CONFIG"
+
+        systemctl disable --now nagara-auto-reboot.timer >/dev/null 2>&1 || true
+
+        rm -f "$AUTO_REBOOT_TIMER" "$AUTO_REBOOT_SERVICE"
+
+        systemctl daemon-reload
+        return 0
+    fi
+
+    cat > "$AUTO_REBOOT_CONFIG" <<EOF
+AUTO_REBOOT_INTERVAL="$interval"
+EOF
+
+    cat > "$AUTO_REBOOT_SERVICE" <<'EOF'
+[Unit]
+Description=Nagara Tunnel Lite Auto Reboot
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl reboot
+EOF
+
+    cat > "$AUTO_REBOOT_TIMER" <<EOF
+[Unit]
+Description=Nagara Tunnel Lite Auto Reboot Timer
+
+[Timer]
+OnBootSec=${seconds}s
+OnUnitActiveSec=${seconds}s
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    chmod 600 "$AUTO_REBOOT_CONFIG"
+    chmod 644 "$AUTO_REBOOT_SERVICE" "$AUTO_REBOOT_TIMER"
+
+    systemctl daemon-reload
+    systemctl enable --now nagara-auto-reboot.timer
+}
+
+auto_reboot_menu() {
+    show_header
+    load_auto_reboot
+
+    echo -e "${WHITE}${BOLD}AUTO REBOOT${RESET}"
+    echo "────────────────────────────────────────────────────────"
+    echo
+
+    echo -n "  Status      : "
+    if [[ "$AUTO_REBOOT_INTERVAL" == "OFF" ]]; then
+        echo -e "${RED}OFF${RESET}"
+    else
+        echo -e "${GREEN}ON${RESET}"
+    fi
+
+    echo "  Interval    : $(auto_reboot_label "$AUTO_REBOOT_INTERVAL")"
+
+    echo
+    echo "Pilih interval:"
+    echo
+    echo "  1. OFF"
+    echo "  2. 1 JAM"
+    echo "  3. 3 JAM"
+    echo "  4. 6 JAM"
+    echo "  5. 12 JAM"
+    echo "  6. 24 JAM"
+    echo "  0. Kembali"
+    echo
+
+    read -rp "  Pilih: " choice
+
+    local new_interval=""
+
+    case "$choice" in
+        1) new_interval="OFF" ;;
+        2) new_interval="1h" ;;
+        3) new_interval="3h" ;;
+        4) new_interval="6h" ;;
+        5) new_interval="12h" ;;
+        6) new_interval="24h" ;;
+        0) return ;;
+        *)
+            echo
+            echo -e "${RED}Pilihan tidak valid.${RESET}"
+            sleep 1
+            return
+            ;;
+    esac
+
+    echo
+
+    if [[ "$new_interval" != "OFF" ]]; then
+        echo -e "${YELLOW}PERHATIAN:${RESET}"
+        echo "VPS akan reboot otomatis setiap"
+        echo "$(auto_reboot_label "$new_interval")."
+        echo
+        echo "Reboot pertama tidak dilakukan sekarang."
+        echo "Timer akan menunggu sesuai interval yang dipilih."
+        echo
+        read -rp "Aktifkan AUTO REBOOT? [y/N]: " confirm
+
+        case "$confirm" in
+            y|Y|yes|YES)
+                ;;
+            *)
+                echo
+                echo "Dibatalkan."
+                pause_screen
+                return
+                ;;
+        esac
+    fi
+
+    echo
+    echo "Menerapkan pengaturan..."
+
+    if write_auto_reboot_files "$new_interval"; then
+        echo
+        if [[ "$new_interval" == "OFF" ]]; then
+            echo -e "${YELLOW}AUTO REBOOT dimatikan.${RESET}"
+        else
+            echo -e "${GREEN}AUTO REBOOT aktif.${RESET}"
+            echo "Interval : $(auto_reboot_label "$new_interval")"
+        fi
+    else
+        echo
+        echo -e "${RED}Gagal menerapkan AUTO REBOOT.${RESET}"
+    fi
+
+    pause_screen
+}
+
+# =========================
 # HEALTH CHECK
 # =========================
 
@@ -983,10 +1168,7 @@ main_menu() {
                 auto_maintenance_menu
                 ;;
             6|06)
-                echo
-                echo "AUTO REBOOT belum diaktifkan."
-                echo "Kita akan buat pilihan 1H / 3H / 6H / 12H / 24H."
-                pause_screen
+                auto_reboot_menu
                 ;;
             7|07)
                 memory_swap
