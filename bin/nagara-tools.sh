@@ -83,6 +83,225 @@ show_header() {
 }
 
 # =========================
+# AUTO MAINTENANCE
+# =========================
+AUTO_MAINT_CONFIG="$APP_DIR/runtime/auto-maintenance.conf"
+AUTO_MAINT_SERVICE="/etc/systemd/system/nagara-auto-maintenance.service"
+AUTO_MAINT_TIMER="/etc/systemd/system/nagara-auto-maintenance.timer"
+
+load_auto_maintenance() {
+    AUTO_MAINT_INTERVAL="OFF"
+
+    if [[ -f "$AUTO_MAINT_CONFIG" ]]; then
+        # shellcheck disable=SC1090
+        source "$AUTO_MAINT_CONFIG"
+    fi
+
+    [[ -n "${AUTO_MAINT_INTERVAL:-}" ]] || AUTO_MAINT_INTERVAL="OFF"
+}
+
+auto_maintenance_interval_seconds() {
+    case "$1" in
+        30m) echo 1800 ;;
+        1h)  echo 3600 ;;
+        3h)  echo 10800 ;;
+        6h)  echo 21600 ;;
+        12h) echo 43200 ;;
+        24h) echo 86400 ;;
+        *)   echo 0 ;;
+    esac
+}
+
+auto_maintenance_label() {
+    case "$1" in
+        30m) echo "30 MENIT" ;;
+        1h)  echo "1 JAM" ;;
+        3h)  echo "3 JAM" ;;
+        6h)  echo "6 JAM" ;;
+        12h) echo "12 JAM" ;;
+        24h) echo "24 JAM" ;;
+        *)   echo "OFF" ;;
+    esac
+}
+
+write_auto_maintenance_files() {
+    local interval="$1"
+    local seconds
+
+    seconds="$(auto_maintenance_interval_seconds "$interval")"
+
+    mkdir -p "$APP_DIR/runtime"
+
+    if [[ "$interval" == "OFF" || "$seconds" -eq 0 ]]; then
+        rm -f "$AUTO_MAINT_CONFIG"
+        systemctl disable --now nagara-auto-maintenance.timer >/dev/null 2>&1 || true
+        rm -f "$AUTO_MAINT_TIMER" "$AUTO_MAINT_SERVICE"
+        systemctl daemon-reload
+        return 0
+    fi
+
+    cat > "$AUTO_MAINT_CONFIG" <<EOF
+AUTO_MAINT_INTERVAL="$interval"
+EOF
+
+    cat > "$AUTO_MAINT_SERVICE" <<'EOF'
+[Unit]
+Description=Nagara Tunnel Lite Auto Maintenance
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/nagara-tunnel-lite/bin/nagara-tools.sh --auto-maintenance
+EOF
+
+    cat > "$AUTO_MAINT_TIMER" <<EOF
+[Unit]
+Description=Nagara Tunnel Lite Auto Maintenance Timer
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=${seconds}s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    chmod 600 "$AUTO_MAINT_CONFIG"
+    chmod 644 "$AUTO_MAINT_SERVICE" "$AUTO_MAINT_TIMER"
+
+    systemctl daemon-reload
+    systemctl enable --now nagara-auto-maintenance.timer
+}
+
+run_auto_maintenance() {
+    local log_file="/var/log/nagara-tunnel-lite/auto-maintenance.log"
+    local timestamp
+
+    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+
+    mkdir -p "$(dirname "$log_file")"
+
+    {
+        echo
+        echo "[$timestamp] AUTO MAINTENANCE START"
+
+        echo "[CHECK] Disk usage:"
+        df -h / | tail -1
+
+        echo "[CHECK] Inode usage:"
+        df -ih / | tail -1
+
+        echo "[CHECK] Failed systemd units:"
+        systemctl --failed --no-legend 2>/dev/null || true
+
+        echo "[CLEAN] Temporary files:"
+        find /tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+
+        echo "[CLEAN] Journal:"
+        journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+
+        echo "[CHECK] Services:"
+        for service in ssh xray nginx haproxy dropbear fail2ban cron; do
+            if service_exists "$service"; then
+                if systemctl is-active --quiet "$service" 2>/dev/null; then
+                    echo "  $service : ON"
+                else
+                    echo "  $service : OFF"
+                    echo "  $service : restart attempt"
+
+                    systemctl restart "$service" >/dev/null 2>&1 || true
+
+                    if systemctl is-active --quiet "$service" 2>/dev/null; then
+                        echo "  $service : recovered"
+                    else
+                        echo "  $service : still OFF"
+                    fi
+                fi
+            fi
+        done
+
+        echo "[CHECK] Memory:"
+        free -h
+
+        echo "[$timestamp] AUTO MAINTENANCE END"
+    } >> "$log_file" 2>&1
+
+    tail -200 "$log_file" > "${log_file}.tmp" 2>/dev/null || true
+    mv "${log_file}.tmp" "$log_file" 2>/dev/null || true
+}
+
+auto_maintenance_menu() {
+    show_header
+    load_auto_maintenance
+
+    echo -e "${WHITE}${BOLD}AUTO MAINTENANCE${RESET}"
+    echo "────────────────────────────────────────────────────────"
+    echo
+
+    echo -n "  Status      : "
+    if [[ "$AUTO_MAINT_INTERVAL" == "OFF" ]]; then
+        echo -e "${RED}OFF${RESET}"
+    else
+        echo -e "${GREEN}ON${RESET}"
+    fi
+
+    echo "  Interval    : $(auto_maintenance_label "$AUTO_MAINT_INTERVAL")"
+
+    echo
+    echo "Pilih interval:"
+    echo
+    echo "  1. OFF"
+    echo "  2. 30 MENIT"
+    echo "  3. 1 JAM"
+    echo "  4. 3 JAM"
+    echo "  5. 6 JAM"
+    echo "  6. 12 JAM"
+    echo "  7. 24 JAM"
+    echo "  0. Kembali"
+    echo
+
+    read -rp "  Pilih: " choice
+
+    local new_interval=""
+
+    case "$choice" in
+        1) new_interval="OFF" ;;
+        2) new_interval="30m" ;;
+        3) new_interval="1h" ;;
+        4) new_interval="3h" ;;
+        5) new_interval="6h" ;;
+        6) new_interval="12h" ;;
+        7) new_interval="24h" ;;
+        0) return ;;
+        *)
+            echo
+            echo -e "${RED}Pilihan tidak valid.${RESET}"
+            sleep 1
+            return
+            ;;
+    esac
+
+    echo
+    echo "Menerapkan pengaturan..."
+
+    if write_auto_maintenance_files "$new_interval"; then
+        echo
+        if [[ "$new_interval" == "OFF" ]]; then
+            echo -e "${YELLOW}AUTO MAINTENANCE dimatikan.${RESET}"
+        else
+            echo -e "${GREEN}AUTO MAINTENANCE aktif.${RESET}"
+            echo "Interval : $(auto_maintenance_label "$new_interval")"
+        fi
+    else
+        echo
+        echo -e "${RED}Gagal menerapkan AUTO MAINTENANCE.${RESET}"
+    fi
+
+    pause_screen
+}
+
+# =========================
 # HEALTH CHECK
 # =========================
 
@@ -761,10 +980,7 @@ main_menu() {
                 restart_services
                 ;;
             5|05)
-                echo
-                echo "AUTO MAINTENANCE belum diaktifkan."
-                echo "Akan dibuat setelah mesin diagnosis selesai."
-                pause_screen
+                auto_maintenance_menu
                 ;;
             6|06)
                 echo
@@ -805,5 +1021,10 @@ main_menu() {
         esac
     done
 }
+
+if [[ "${1:-}" == "--auto-maintenance" ]]; then
+    run_auto_maintenance
+    exit 0
+fi
 
 main_menu
