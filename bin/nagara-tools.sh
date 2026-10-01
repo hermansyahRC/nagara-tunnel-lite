@@ -545,36 +545,154 @@ memory_swap() {
     echo "────────────────────────────────────────────────────────"
     echo
 
-    free -h
+    local mem_total mem_used mem_available mem_percent
+    local swap_total swap_used swap_percent
+
+    mem_total="$(free -m | awk '/^Mem:/{print $2}')"
+    mem_used="$(free -m | awk '/^Mem:/{print $3}')"
+    mem_available="$(free -m | awk '/^Mem:/{print $7}')"
+
+    if [[ "${mem_total:-0}" -gt 0 ]]; then
+        mem_percent=$((mem_used * 100 / mem_total))
+    else
+        mem_percent=0
+    fi
+
+    swap_total="$(free -m | awk '/^Swap:/{print $2}')"
+    swap_used="$(free -m | awk '/^Swap:/{print $3}')"
+
+    if [[ "${swap_total:-0}" -gt 0 ]]; then
+        swap_percent=$((swap_used * 100 / swap_total))
+    else
+        swap_percent=0
+    fi
+
+    echo -e "${BOLD}RAM${RESET}"
+    echo "  Total       : ${mem_total} MB"
+    echo "  Used        : ${mem_used} MB (${mem_percent}%)"
+    echo "  Available   : ${mem_available} MB"
 
     echo
-    echo -e "${BOLD}SWAP DETAIL${RESET}"
+    echo -e "${BOLD}SWAP${RESET}"
 
-    if command -v swapon >/dev/null 2>&1; then
-        if swapon --show 2>/dev/null | grep -q .; then
-            swapon --show
-        else
-            echo -e "${YELLOW}Belum ada SWAP aktif.${RESET}"
-        fi
+    if [[ "${swap_total:-0}" -gt 0 ]]; then
+        echo "  Total       : ${swap_total} MB"
+        echo "  Used        : ${swap_used} MB (${swap_percent}%)"
+
+        echo
+        echo "  Active swap:"
+        swapon --show 2>/dev/null || true
+    else
+        echo -e "  Status      : ${YELLOW}NOT CONFIGURED${RESET}"
     fi
 
     echo
     echo -e "${BOLD}MEMORY PRESSURE${RESET}"
 
     if [[ -f /proc/pressure/memory ]]; then
-        cat /proc/pressure/memory
+        awk '
+            /^some/ {print "  " $0}
+            /^full/ {print "  " $0}
+        ' /proc/pressure/memory
     else
-        echo "Memory PSI tidak tersedia."
+        echo "  Memory PSI tidak tersedia."
     fi
 
     echo
-    echo "Belum ada perubahan memory/swap otomatis."
-    echo "Tahap berikutnya bisa menambahkan pembuatan SWAP"
-    echo "dengan pengecekan ukuran VPS terlebih dahulu."
+    echo -e "${BOLD}TOP MEMORY PROCESSES${RESET}"
+    echo "────────────────────────────────────────────────────────"
+
+    ps -eo pid,user,%mem,rss,comm --sort=-%mem 2>/dev/null |
+        head -n 6 |
+        awk '
+        NR==1 {
+            printf "  %-8s %-12s %-7s %-10s %s\n",
+                   "PID","USER","%MEM","RSS","COMMAND"
+            next
+        }
+        {
+            printf "  %-8s %-12s %-7s %-10s %s\n",
+                   $1,$2,$3,$4" KB",$5
+        }'
 
     echo
-    pause_screen
+    echo "────────────────────────────────────────────────────────"
+
+    if [[ "${swap_total:-0}" -eq 0 ]]; then
+        echo
+        echo -e "${YELLOW}SWAP BELUM TERPASANG.${RESET}"
+        echo
+        echo "Swap dapat membantu sebagai cadangan ketika RAM"
+        echo "tertekan, tetapi swap bukan pengganti RAM."
+        echo
+        echo "1. Buat SWAP 2 GB"
+        echo "0. Kembali"
+        echo
+
+        read -rp "Pilih: " choice
+
+        case "$choice" in
+            1)
+                echo
+                echo "Memeriksa kebutuhan dan ruang disk..."
+
+                local disk_free_mb
+                disk_free_mb="$(df -Pm / | awk 'NR==2{print $4}')"
+
+                if [[ "${disk_free_mb:-0}" -lt 3072 ]]; then
+                    echo -e "${RED}Ruang disk bebas tidak cukup untuk membuat swap 2 GB.${RESET}"
+                    pause_screen
+                    return
+                fi
+
+                if [[ -e /swapfile ]]; then
+                    echo -e "${YELLOW}/swapfile sudah ada tetapi belum aktif.${RESET}"
+                    echo "Tidak akan menimpa file tersebut."
+                    pause_screen
+                    return
+                fi
+
+                echo
+                echo "Membuat swap 2 GB..."
+
+                if fallocate -l 2G /swapfile 2>/dev/null &&
+                   chmod 600 /swapfile &&
+                   mkswap /swapfile >/dev/null 2>&1 &&
+                   swapon /swapfile >/dev/null 2>&1; then
+
+                    if ! grep -qE '^[[:space:]]*/swapfile[[:space:]]' /etc/fstab; then
+                        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+                    fi
+
+                    echo
+                    echo -e "${GREEN}SWAP 2 GB berhasil diaktifkan.${RESET}"
+                    echo
+                    free -h
+                else
+                    echo
+                    echo -e "${RED}Gagal membuat atau mengaktifkan swap.${RESET}"
+                fi
+
+                pause_screen
+                ;;
+
+            0)
+                return
+                ;;
+
+            *)
+                echo -e "${RED}Pilihan tidak valid.${RESET}"
+                sleep 1
+                ;;
+        esac
+    else
+        echo
+        echo -e "${GREEN}SWAP sudah aktif. Tidak ada perubahan yang diperlukan.${RESET}"
+        echo
+        pause_screen
+    fi
 }
+
 
 # =========================
 # PORT INFO
