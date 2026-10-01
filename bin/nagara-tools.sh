@@ -270,9 +270,6 @@ check_repair() {
     echo "────────────────────────────────────────────────────────"
     echo
 
-    echo "Memeriksa service Nagara..."
-    echo
-
     local services=(
         "ssh"
         "xray"
@@ -285,6 +282,11 @@ check_repair() {
 
     local service
     local state
+    local problem=0
+    local -a failed_services=()
+
+    echo -e "${WHITE}${BOLD}1. SERVICE CHECK${RESET}"
+    echo
 
     for service in "${services[@]}"; do
         state="$(service_status "$service")"
@@ -292,18 +294,179 @@ check_repair() {
         printf "  %-10s : " "${service^^}"
         status_text "$state"
 
-        if [[ "$state" == "OFF" ]]; then
-            echo -e "             ${YELLOW}Service mati.${RESET}"
-        fi
+        case "$state" in
+            OFF|FAILED)
+                problem=1
+                failed_services+=("$service")
+                echo -e "             ${YELLOW}Perlu pemeriksaan.${RESET}"
+                ;;
+            "NOT INSTALLED")
+                echo -e "             ${YELLOW}Tidak terpasang.${RESET}"
+                ;;
+        esac
     done
 
     echo
-    echo "Tidak ada service yang direstart otomatis pada tahap ini."
-    echo "Kita buat repair otomatis setelah sistem diagnosis selesai."
+    echo "────────────────────────────────────────────────────────"
+    echo -e "${WHITE}${BOLD}2. CONFIGURATION CHECK${RESET}"
     echo
 
-    pause_screen
+    local check_ok=1
+
+    if command -v xray >/dev/null 2>&1; then
+        if xray -test -config /usr/local/etc/xray/config.json >/dev/null 2>&1; then
+            echo -e "  XRAY CONFIG   : ${GREEN}OK${RESET}"
+        else
+            echo -e "  XRAY CONFIG   : ${RED}ERROR${RESET}"
+            echo -e "                  ${YELLOW}Konfigurasi Xray perlu diperiksa.${RESET}"
+            problem=1
+            check_ok=0
+        fi
+    else
+        echo -e "  XRAY CONFIG   : ${YELLOW}XRAY TIDAK DITEMUKAN${RESET}"
+        problem=1
+        check_ok=0
+    fi
+
+    if command -v nginx >/dev/null 2>&1; then
+        if nginx -t >/dev/null 2>&1; then
+            echo -e "  NGINX CONFIG  : ${GREEN}OK${RESET}"
+        else
+            echo -e "  NGINX CONFIG  : ${RED}ERROR${RESET}"
+            echo -e "                  ${YELLOW}Konfigurasi Nginx perlu diperiksa.${RESET}"
+            problem=1
+            check_ok=0
+        fi
+    else
+        echo -e "  NGINX CONFIG  : ${YELLOW}NGINX TIDAK DITEMUKAN${RESET}"
+        problem=1
+        check_ok=0
+    fi
+
+    if command -v fail2ban-client >/dev/null 2>&1; then
+        if fail2ban-client -t >/dev/null 2>&1; then
+            echo -e "  FAIL2BAN CFG  : ${GREEN}OK${RESET}"
+        else
+            echo -e "  FAIL2BAN CFG  : ${RED}ERROR${RESET}"
+            echo -e "                  ${YELLOW}Konfigurasi Fail2ban perlu diperiksa.${RESET}"
+            problem=1
+            check_ok=0
+        fi
+    else
+        echo -e "  FAIL2BAN CFG  : ${YELLOW}FAIL2BAN TIDAK DITEMUKAN${RESET}"
+    fi
+
+    echo
+    echo "────────────────────────────────────────────────────────"
+
+    if [[ "$problem" -eq 0 ]]; then
+        echo
+        echo -e "  ${GREEN}${BOLD}SISTEM TIDAK MENEMUKAN MASALAH.${RESET}"
+        echo
+        pause_screen
+        return
+    fi
+
+    echo
+    echo -e "  ${YELLOW}${BOLD}DITEMUKAN MASALAH YANG PERLU DIPERIKSA.${RESET}"
+    echo
+
+    if [[ "${#failed_services[@]}" -gt 0 ]]; then
+        echo "Service yang bermasalah:"
+        for service in "${failed_services[@]}"; do
+            echo "  - $service"
+        done
+        echo
+    fi
+
+    echo "Pilih tindakan:"
+    echo "1. Repair service yang bermasalah"
+    echo "2. Tampilkan detail error"
+    echo "0. Kembali"
+    echo
+
+    read -rp "Pilih: " choice
+
+    case "$choice" in
+        1)
+            if [[ "${#failed_services[@]}" -eq 0 ]]; then
+                echo
+                echo -e "${YELLOW}Tidak ada service yang bisa direstart otomatis.${RESET}"
+                echo "Masalah kemungkinan berada pada konfigurasi."
+                pause_screen
+                return
+            fi
+
+            echo
+            echo "Menjalankan repair service..."
+            echo
+
+            for service in "${failed_services[@]}"; do
+                echo "→ Restart $service"
+
+                if systemctl restart "$service" 2>/dev/null; then
+                    sleep 1
+
+                    if systemctl is-active --quiet "$service" 2>/dev/null; then
+                        echo -e "  ${GREEN}Berhasil.${RESET}"
+                    else
+                        echo -e "  ${RED}Masih bermasalah.${RESET}"
+                    fi
+                else
+                    echo -e "  ${RED}Gagal restart.${RESET}"
+                fi
+            done
+
+            echo
+            echo "Repair selesai. Melakukan pengecekan ulang..."
+            sleep 2
+
+            echo
+            for service in "${failed_services[@]}"; do
+                state="$(service_status "$service")"
+                printf "  %-10s : " "${service^^}"
+                status_text "$state"
+            done
+
+            pause_screen
+            ;;
+
+        2)
+            echo
+            echo "=== DETAIL SERVICE BERMASALAH ==="
+
+            if [[ "${#failed_services[@]}" -gt 0 ]]; then
+                for service in "${failed_services[@]}"; do
+                    echo
+                    echo "--- $service ---"
+                    systemctl status "$service" --no-pager -l 2>&1 | head -30
+                done
+            fi
+
+            echo
+            echo "=== DETAIL KONFIGURASI ==="
+
+            if [[ "$check_ok" -eq 0 ]]; then
+                echo
+                echo "Jika Xray/Nginx/Fail2ban config bermasalah,"
+                echo "gunakan menu detail atau periksa log sebelum melakukan perubahan."
+            fi
+
+            pause_screen
+            ;;
+
+        0)
+            return
+            ;;
+
+        *)
+            echo
+            echo -e "${RED}Pilihan tidak valid.${RESET}"
+            sleep 1
+            ;;
+    esac
 }
+
 
 # =========================
 # RESTART SERVICES
