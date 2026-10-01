@@ -187,7 +187,7 @@ draw_menu() {
     printf "│     %-23s   %-23s │\n"         "1. VMESS MANAGER" "5. DOMAIN / SSL"
     printf "│     %-23s   %-23s │\n"         "2. VLESS MANAGER" "6. BACKUP / RESTORE"
     printf "│     %-23s   %-23s │\n"         "3. TROJAN MANAGER" "7. SYSTEM MONITOR"
-    printf "│     %-23s   %-23s │\n"         "4. XRAY MANAGER" "8. SETTINGS"
+    printf "│     %-23s   %-23s │\n"         "4. XRAY MANAGER" "8. NAGARA TOOLS"
     echo "│                                                        │"
     echo "└────────────────────────────────────────────────────────┘"
 }
@@ -234,9 +234,14 @@ main_menu() {
                 echo
                 read -r -p "Tekan Enter untuk kembali ke menu..."
                 ;;
-            8)  echo
-                echo "Settings belum diaktifkan."
-                read -r -p "Tekan Enter untuk kembali..."
+            8)
+                if [[ -x "$APP_DIR/bin/nagara-tools.sh" ]]; then
+                    "$APP_DIR/bin/nagara-tools.sh"
+                else
+                    echo
+                    echo -e "${RED}Nagara Tools tidak ditemukan.${RESET}"
+                    read -r -p "Tekan Enter untuk kembali..."
+                fi
                 ;;
             q|Q|0)
                 clear

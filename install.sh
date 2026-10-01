@@ -611,25 +611,10 @@ configure_fail2ban() {
     mkdir -p /etc/fail2ban/jail.d
     mkdir -p /etc/fail2ban/filter.d
 
-    cat > /etc/fail2ban/filter.d/nagara-dropbear.conf <<'DROPBEAR_FILTER'
-[Definition]
-failregex = ^.*dropbear.*(Exit before auth|Bad password|Auth error|authentication failed).*$
-ignoreregex =
-DROPBEAR_FILTER
-
     cat > /etc/fail2ban/jail.d/nagara-ssh.conf <<'FAIL2BAN'
 [sshd]
 enabled = true
 port = 22
-backend = systemd
-maxretry = 5
-findtime = 10m
-bantime = 1h
-
-[nagara-dropbear]
-enabled = true
-port = 2222
-filter = nagara-dropbear
 backend = systemd
 maxretry = 5
 findtime = 10m
