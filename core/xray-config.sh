@@ -126,35 +126,23 @@ for row in active:
 
 inbounds = config.get("inbounds", [])
 
-# Add VLESS gRPC inbound if it does not exist yet.
-if not any(x.get("tag") == "vless-grpc-in" for x in inbounds):
-    inbounds.append({
-        "listen": "127.0.0.1",
-        "port": 10005,
-        "protocol": "vless",
-        "settings": {
-            "clients": [],
-            "decryption": "none"
-        },
-        "streamSettings": {
-            "network": "grpc",
-            "grpcSettings": {
-                "serviceName": "vless-grpc"
-            }
-        },
-        "tag": "vless-grpc-in"
-    })
+# Remove obsolete duplicate VLESS gRPC inbound.
+# The active VLESS gRPC inbound uses tag "vless-grpc" on port 10005.
+inbounds = [
+    x for x in inbounds
+    if x.get("tag") != "vless-grpc-in"
+]
 
 for inbound in inbounds:
     tag = inbound.get("tag")
 
-    if tag == "vless-in":
+    if tag == "vless-ws":
         inbound.setdefault("settings", {})["clients"] = vless_clients
 
-    elif tag == "vmess-in":
+    elif tag == "vmess-ws":
         inbound.setdefault("settings", {})["clients"] = vmess_clients
 
-    elif tag == "trojan-in":
+    elif tag == "trojan-ws":
         inbound.setdefault("settings", {})["clients"] = trojan_clients
         inbound["streamSettings"] = {
             "network": "ws",
@@ -163,7 +151,7 @@ for inbound in inbounds:
             }
         }
 
-    elif tag == "vmess-grpc-in":
+    elif tag == "vmess-grpc":
         # Keep existing VMess gRPC clients, then add
         # all active VMess users so every VMess account
         # can use the same gRPC transport.
@@ -183,7 +171,7 @@ for inbound in inbounds:
                 existing_clients.append(dict(client))
                 existing_ids.add(client_id)
 
-    elif tag == "vless-grpc-in":
+    elif tag == "vless-grpc":
         inbound.setdefault("settings", {})["clients"] = vless_clients
 
 with open(tmp_path, "w", encoding="utf-8") as f:
