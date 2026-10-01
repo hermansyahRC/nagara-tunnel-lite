@@ -487,6 +487,117 @@ auto_reboot_menu() {
 }
 
 # =========================
+# CLEAN LOG
+# =========================
+clean_log() {
+    show_header
+    echo -e "${WHITE}${BOLD}CLEAN LOG${RESET}"
+    echo "────────────────────────────────────────────────────────"
+    echo
+
+    local journal_size xray_size nginx_size auth_size syslog_size
+
+    journal_size="$(journalctl --disk-usage 2>/dev/null | sed 's/.*take up //; s/ in the file system.*//')"
+    [[ -n "$journal_size" ]] || journal_size="0"
+
+    xray_size="$(du -sh /var/log/xray 2>/dev/null | awk '{print $1}')"
+    [[ -n "$xray_size" ]] || xray_size="0"
+
+    nginx_size="$(du -sh /var/log/nginx 2>/dev/null | awk '{print $1}')"
+    [[ -n "$nginx_size" ]] || nginx_size="0"
+
+    auth_size="$(du -h /var/log/auth.log 2>/dev/null | awk '{print $1}')"
+    [[ -n "$auth_size" ]] || auth_size="0"
+
+    syslog_size="$(du -h /var/log/syslog 2>/dev/null | awk '{print $1}')"
+    [[ -n "$syslog_size" ]] || syslog_size="0"
+
+    echo "  Journal        : $journal_size"
+    echo "  Xray log       : $xray_size"
+    echo "  Nginx log      : $nginx_size"
+    echo "  Auth log       : $auth_size"
+    echo "  Syslog         : $syslog_size"
+    echo
+    echo "  1. Journal > 7 hari"
+    echo "  2. Journal > 3 hari"
+    echo "  3. Log Xray & Nginx"
+    echo "  4. Semua log aman"
+    echo "  0. Kembali"
+    echo
+
+    read -rp "  Pilih: " choice
+
+    case "$choice" in
+        1)
+            echo
+            echo "Membersihkan journal lebih dari 7 hari..."
+            journalctl --vacuum-time=7d
+            ;;
+        2)
+            echo
+            echo "Membersihkan journal lebih dari 3 hari..."
+            journalctl --vacuum-time=3d
+            ;;
+        3)
+            echo
+            echo "Merotasi log Xray & Nginx..."
+            if command -v logrotate >/dev/null 2>&1; then
+                logrotate -f /etc/logrotate.conf >/dev/null 2>&1 || true
+            fi
+
+            if [[ -f /var/log/xray/access.log ]]; then
+                : > /var/log/xray/access.log
+            fi
+
+            if [[ -f /var/log/nginx/access.log ]]; then
+                : > /var/log/nginx/access.log
+            fi
+
+            if [[ -f /var/log/nginx/error.log ]]; then
+                : > /var/log/nginx/error.log
+            fi
+
+            echo "Log Xray & Nginx dibersihkan."
+            ;;
+        4)
+            echo
+            echo "Membersihkan journal lebih dari 7 hari..."
+            journalctl --vacuum-time=7d
+
+            echo
+            echo "Merotasi log Xray & Nginx..."
+            if command -v logrotate >/dev/null 2>&1; then
+                logrotate -f /etc/logrotate.conf >/dev/null 2>&1 || true
+            fi
+
+            if [[ -f /var/log/xray/access.log ]]; then
+                : > /var/log/xray/access.log
+            fi
+
+            if [[ -f /var/log/nginx/access.log ]]; then
+                : > /var/log/nginx/access.log
+            fi
+
+            if [[ -f /var/log/nginx/error.log ]]; then
+                : > /var/log/nginx/error.log
+            fi
+
+            echo
+            echo "Cleanup selesai."
+            ;;
+        0)
+            return
+            ;;
+        *)
+            echo
+            echo -e "${RED}Pilihan tidak valid.${RESET}"
+            ;;
+    esac
+
+    pause_screen
+}
+
+# =========================
 # HEALTH CHECK
 # =========================
 
@@ -1174,9 +1285,7 @@ main_menu() {
                 memory_swap
                 ;;
             8|08)
-                echo
-                echo "CLEAN LOG akan dibuat pada tahap berikutnya."
-                pause_screen
+                clean_log
                 ;;
             9|09)
                 echo
