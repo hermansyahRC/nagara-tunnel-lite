@@ -1293,16 +1293,33 @@ info_port() {
     echo "────────────────────────────────────────────────────────"
     echo
 
-    if command -v ss >/dev/null 2>&1; then
-        echo -e "${BOLD}PORT LISTENING${RESET}"
-        echo
+    port_state() {
+        local port="$1"
 
-        ss -lntup 2>/dev/null |
-            awk 'NR==1 || /LISTEN|UNCONN/'
-    else
-        echo "Perintah ss tidak tersedia."
-    fi
+        if ss -lnt 2>/dev/null |
+            awk -v p=":$port" '$4 ~ p"$" {found=1} END {exit !found}'; then
+            echo -e "${GREEN}LISTEN${RESET}"
+        else
+            echo -e "${RED}CLOSED${RESET}"
+        fi
+    }
 
+    echo -e "${WHITE}${BOLD}PUBLIC PORT${RESET}"
+    echo "  22    SSH        : $(port_state 22)"
+    echo "  80    NGINX      : $(port_state 80)"
+    echo "  443   NGINX      : $(port_state 443)"
+    echo "  2222  DROPBEAR   : $(port_state 2222)"
+
+    echo
+    echo -e "${WHITE}${BOLD}XRAY INTERNAL${RESET}"
+
+    for port in 10001 10002 10003 10004 10005 10085; do
+        printf "  %-5s : " "$port"
+        port_state "$port"
+    done
+
+    echo
+    echo -e "${GRAY}Port Xray di atas digunakan secara internal/local.${RESET}"
     echo
     echo "────────────────────────────────────────────────────────"
 
