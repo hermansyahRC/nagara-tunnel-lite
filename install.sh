@@ -191,7 +191,8 @@ create_xray_config() {
     "levels": {
       "0": {
         "statsUserUplink": true,
-        "statsUserDownlink": true
+        "statsUserDownlink": true,
+        "statsUserOnline": true
       }
     },
     "system": {

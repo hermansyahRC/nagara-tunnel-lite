@@ -74,17 +74,26 @@ count_users() {
 }
 
 count_online() {
-    # Session monitor belum aktif.
-    # Untuk sementara membaca runtime session jika tersedia.
-    local session_db="$APP_DIR/runtime/sessions/sessions.db"
+    local xray="/usr/local/bin/xray"
+    local api="127.0.0.1:10085"
+    local result
 
-    if [[ -f "$session_db" ]]; then
-        sqlite3 "$session_db" \
-            "SELECT COUNT(*) FROM sessions WHERE status='online';" \
-            2>/dev/null || echo "0"
-    else
+    if [[ ! -x "$xray" ]]; then
         echo "0"
+        return
     fi
+
+    result="$("$xray" api statsgetallonlineusers \
+        --server="$api" 2>/dev/null || true)"
+
+    if [[ -z "$result" || "$result" == "{}" ]]; then
+        echo "0"
+        return
+    fi
+
+    printf '%s\n' "$result" |
+        jq -r '.users[]? // empty' 2>/dev/null |
+        grep -c '^user>>>.*>>>online$' || true
 }
 
 # =========================
