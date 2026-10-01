@@ -598,6 +598,79 @@ clean_log() {
 }
 
 # =========================
+# CLEAR CACHE
+# =========================
+clear_cache() {
+    show_header
+    echo -e "${WHITE}${BOLD}CLEAR CACHE${RESET}"
+    echo "────────────────────────────────────────────────────────"
+    echo
+
+    local apt_size tmp_size vartmp_size
+
+    apt_size="$(du -sh /var/cache/apt 2>/dev/null | awk '{print $1}')"
+    [[ -n "$apt_size" ]] || apt_size="0"
+
+    tmp_size="$(du -sh /tmp 2>/dev/null | awk '{print $1}')"
+    [[ -n "$tmp_size" ]] || tmp_size="0"
+
+    vartmp_size="$(du -sh /var/tmp 2>/dev/null | awk '{print $1}')"
+    [[ -n "$vartmp_size" ]] || vartmp_size="0"
+
+    echo "  APT cache      : $apt_size"
+    echo "  /tmp           : $tmp_size"
+    echo "  /var/tmp       : $vartmp_size"
+    echo
+    echo "  1. APT cache"
+    echo "  2. Temporary files"
+    echo "  3. Semua cache aman"
+    echo "  0. Kembali"
+    echo
+
+    read -rp "  Pilih: " choice
+
+    case "$choice" in
+        1)
+            echo
+            echo "Membersihkan APT cache..."
+            apt-get clean >/dev/null 2>&1 || true
+            echo "APT cache selesai dibersihkan."
+            ;;
+        2)
+            echo
+            echo "Membersihkan temporary files lama..."
+
+            find /tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+            find /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+
+            echo "Temporary files lama selesai dibersihkan."
+            ;;
+        3)
+            echo
+            echo "Membersihkan APT cache..."
+            apt-get clean >/dev/null 2>&1 || true
+
+            echo
+            echo "Membersihkan temporary files lama..."
+            find /tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+            find /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+
+            echo
+            echo "Cleanup cache selesai."
+            ;;
+        0)
+            return
+            ;;
+        *)
+            echo
+            echo -e "${RED}Pilihan tidak valid.${RESET}"
+            ;;
+    esac
+
+    pause_screen
+}
+
+# =========================
 # HEALTH CHECK
 # =========================
 
@@ -1288,9 +1361,7 @@ main_menu() {
                 clean_log
                 ;;
             9|09)
-                echo
-                echo "CLEAR CACHE akan dibuat dengan mekanisme aman."
-                pause_screen
+                clear_cache
                 ;;
             10)
                 info_port
