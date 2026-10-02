@@ -1440,7 +1440,7 @@ telegram_menu() {
         case "$choice" in
             1)
                 echo
-                read -rsp "  Masukkan Bot Token: " TELEGRAM_BOT_TOKEN
+                read -rp "  Masukkan Bot Token: " TELEGRAM_BOT_TOKEN
                 echo
                 save_telegram_config
                 echo -e "${GREEN}Bot Token tersimpan.${RESET}"
