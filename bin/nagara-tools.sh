@@ -176,6 +176,15 @@ EOF
 
 run_auto_maintenance() {
     local log_file="/var/log/nagara-tunnel-lite/auto-maintenance.log"
+
+    # TELEGRAM_AUTO_MAINTENANCE_NOTIFICATION
+    telegram_send "NAGARA TUNNEL LITE
+
+AUTO MAINTENANCE
+Maintenance otomatis sedang dijalankan.
+
+Server : $(hostname)
+Time   : $(date '+%Y-%m-%d %H:%M:%S')"
     local timestamp
 
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -343,6 +352,19 @@ auto_reboot_label() {
 
 write_auto_reboot_files() {
     local interval="$1"
+
+    # TELEGRAM_AUTO_REBOOT_NOTIFICATION
+    if [[ "$interval" != "off" ]]; then
+        telegram_send "NAGARA TUNNEL LITE
+
+AUTO REBOOT AKTIF
+
+Server   : $(hostname)
+Interval : $(auto_reboot_label "$interval")
+Status   : VPS akan reboot otomatis sesuai jadwal.
+
+Time     : $(date '+%Y-%m-%d %H:%M:%S')"
+    fi
     local seconds
 
     seconds="$(auto_reboot_interval_seconds "$interval")"
@@ -959,6 +981,17 @@ check_repair() {
     echo -e "  ${YELLOW}${BOLD}DITEMUKAN MASALAH YANG PERLU DIPERIKSA.${RESET}"
     echo
 
+    # TELEGRAM_CHECK_REPAIR_NOTIFICATION
+    telegram_send "NAGARA TUNNEL LITE
+
+CHECK / REPAIR
+
+Server : $(hostname)
+Time   : $(date '+%Y-%m-%d %H:%M:%S')
+
+Ditemukan masalah pada service atau konfigurasi.
+Silakan periksa menu CHECK / REPAIR."
+
     if [[ "${#failed_services[@]}" -gt 0 ]]; then
         echo "Service yang bermasalah:"
         for service in "${failed_services[@]}"; do
@@ -1111,6 +1144,17 @@ restart_services() {
                 echo -e "  ${GREEN}OK${RESET}"
             else
                 echo -e "  ${RED}FAILED${RESET}"
+
+                # TELEGRAM_RESTART_SERVICE_NOTIFICATION
+                telegram_send "NAGARA TUNNEL LITE
+
+SERVICE RESTART GAGAL
+
+Server  : $(hostname)
+Service : $service
+Time    : $(date '+%Y-%m-%d %H:%M:%S')
+
+Restart service gagal. Silakan lakukan pemeriksaan."
             fi
         else
             echo -e "  ${GRAY}$service tidak terpasang.${RESET}"
