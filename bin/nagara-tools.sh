@@ -1327,6 +1327,136 @@ info_port() {
 }
 
 # =========================
+# TELEGRAM
+# =========================
+
+TELEGRAM_CONFIG="$APP_DIR/runtime/telegram.conf"
+TELEGRAM_SCRIPT="$APP_DIR/bin/telegram-notify.sh"
+
+load_telegram_config() {
+    TELEGRAM_ENABLED="false"
+    TELEGRAM_BOT_TOKEN=""
+    TELEGRAM_CHAT_ID=""
+
+    if [[ -f "$TELEGRAM_CONFIG" ]]; then
+        source "$TELEGRAM_CONFIG"
+    fi
+}
+
+save_telegram_config() {
+    mkdir -p "$APP_DIR/runtime"
+
+    cat > "$TELEGRAM_CONFIG" <<EOF
+TELEGRAM_ENABLED="$TELEGRAM_ENABLED"
+TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN"
+TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
+EOF
+
+    chmod 600 "$TELEGRAM_CONFIG"
+}
+
+telegram_menu() {
+    while true; do
+        show_header
+        load_telegram_config
+
+        echo -e "${WHITE}${BOLD}TELEGRAM NOTIFICATION${RESET}"
+        echo "────────────────────────────────────────────────────────"
+        echo
+
+        if [[ "$TELEGRAM_ENABLED" == "true" ]]; then
+            echo -e "  Status       : ${GREEN}ON${RESET}"
+        else
+            echo -e "  Status       : ${RED}OFF${RESET}"
+        fi
+
+        if [[ -n "$TELEGRAM_BOT_TOKEN" ]]; then
+            echo "  Bot Token    : SET"
+        else
+            echo "  Bot Token    : NOT SET"
+        fi
+
+        if [[ -n "$TELEGRAM_CHAT_ID" ]]; then
+            echo "  Chat ID      : SET"
+        else
+            echo "  Chat ID      : NOT SET"
+        fi
+
+        echo
+        echo "  1. SET BOT TOKEN"
+        echo "  2. SET CHAT ID"
+        echo "  3. TEST NOTIFICATION"
+        echo "  4. ENABLE"
+        echo "  5. DISABLE"
+        echo "  0. KEMBALI"
+        echo
+
+        read -rp "  Pilih: " choice
+
+        case "$choice" in
+            1)
+                echo
+                read -rsp "  Masukkan Bot Token: " TELEGRAM_BOT_TOKEN
+                echo
+                save_telegram_config
+                echo -e "${GREEN}Bot Token tersimpan.${RESET}"
+                pause_screen
+                ;;
+            2)
+                echo
+                read -rp "  Masukkan Chat ID: " TELEGRAM_CHAT_ID
+                save_telegram_config
+                echo -e "${GREEN}Chat ID tersimpan.${RESET}"
+                pause_screen
+                ;;
+            3)
+                load_telegram_config
+                echo
+                if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+                    echo -e "${RED}Bot Token dan Chat ID belum lengkap.${RESET}"
+                else
+                    echo "Mengirim test notification..."
+                    if "$TELEGRAM_SCRIPT" --test; then
+                        echo -e "${GREEN}✓ Test notification berhasil dikirim.${RESET}"
+                    else
+                        echo -e "${RED}✗ Test notification gagal.${RESET}"
+                    fi
+                fi
+                pause_screen
+                ;;
+            4)
+                load_telegram_config
+                if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+                    echo
+                    echo -e "${RED}Bot Token dan Chat ID harus diisi terlebih dahulu.${RESET}"
+                else
+                    TELEGRAM_ENABLED="true"
+                    save_telegram_config
+                    echo
+                    echo -e "${GREEN}Telegram notification diaktifkan.${RESET}"
+                fi
+                pause_screen
+                ;;
+            5)
+                TELEGRAM_ENABLED="false"
+                save_telegram_config
+                echo
+                echo "Telegram notification dinonaktifkan."
+                pause_screen
+                ;;
+            0|00|q|Q)
+                return
+                ;;
+            *)
+                echo
+                echo -e "${RED}Pilihan tidak valid.${RESET}"
+                pause_screen
+                ;;
+        esac
+    done
+}
+
+# =========================
 # MAIN MENU
 # =========================
 
@@ -1384,9 +1514,7 @@ main_menu() {
                 info_port
                 ;;
             11)
-                echo
-                echo "TELEGRAM akan dibuat pada tahap berikutnya."
-                pause_screen
+                telegram_menu
                 ;;
             0|00|q|Q)
                 clear
