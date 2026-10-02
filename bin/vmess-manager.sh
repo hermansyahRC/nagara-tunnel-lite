@@ -12,6 +12,10 @@ if [[ -f "$APP_DIR/core/colors.sh" ]]; then
     source "$APP_DIR/core/colors.sh"
 fi
 
+if [[ -f "$APP_DIR/bin/telegram-notify.sh" ]]; then
+    source "$APP_DIR/bin/telegram-notify.sh"
+fi
+
 pause_menu() {
     echo
     read -r -p "Press Enter to continue..." _
@@ -206,10 +210,11 @@ create_trial() {
 show_vmess_links() {
     local username="$1"
     local uuid="$2"
-
     local domain="$DOMAIN"
     local link_json
-    local link_b64
+    local vmess_ws_tls
+    local vmess_ws_80
+    local vmess_grpc_tls
 
     echo
     echo "════════════════════════════════════════════════════════"
@@ -248,9 +253,11 @@ raw = json.dumps(cfg, separators=(",", ":"))
 print(base64.b64encode(raw.encode()).decode())
 PYJSON
 )"
-    echo "VMess WS TLS 443"
-    echo "vmess://${link_json}"
 
+    vmess_ws_tls="vmess://${link_json}"
+
+    echo "VMess WS TLS 443"
+    echo "$vmess_ws_tls"
     echo
     echo "────────────────────────────────────────────────────────"
 
@@ -282,9 +289,11 @@ raw = json.dumps(cfg, separators=(",", ":"))
 print(base64.b64encode(raw.encode()).decode())
 PYJSON
 )"
-    echo "VMess WS 80"
-    echo "vmess://${link_json}"
 
+    vmess_ws_80="vmess://${link_json}"
+
+    echo "VMess WS 80"
+    echo "$vmess_ws_80"
     echo
     echo "────────────────────────────────────────────────────────"
 
@@ -317,13 +326,44 @@ raw = json.dumps(cfg, separators=(",", ":"))
 print(base64.b64encode(raw.encode()).decode())
 PYJSON
 )"
-    echo "VMess gRPC TLS 443"
-    echo "vmess://${link_json}"
 
+    vmess_grpc_tls="vmess://${link_json}"
+
+    echo "VMess gRPC TLS 443"
+    echo "$vmess_grpc_tls"
     echo
     echo "────────────────────────────────────────────────────────"
     echo "Copy salah satu link di atas → Import from clipboard"
     echo "di V2RayNG."
+    echo
+
+    # Telegram notification
+    telegram_message="NAGARA TUNNEL LITE
+
+VMESS ACCOUNT
+
+Username : $username
+Server   : $domain
+
+VMess WS TLS 443
+$vmess_ws_tls
+
+VMess WS 80
+$vmess_ws_80
+
+VMess gRPC TLS 443
+$vmess_grpc_tls"
+
+    if telegram_send "$telegram_message"; then
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${GREEN}✓ Link VMess dikirim ke Telegram.${RESET}"
+        fi
+    else
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${YELLOW}⚠ Gagal mengirim link ke Telegram.${RESET}"
+        fi
+    fi
+
     echo
 }
 
