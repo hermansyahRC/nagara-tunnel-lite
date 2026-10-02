@@ -14,6 +14,10 @@ if [[ -f "$APP_DIR/config/config.conf" ]]; then
     source "$APP_DIR/config/config.conf"
 fi
 
+if [[ -f "$APP_DIR/bin/telegram-notify.sh" ]]; then
+    source "$APP_DIR/bin/telegram-notify.sh"
+fi
+
 # ============================================================
 # COLORS
 # ============================================================
@@ -87,6 +91,7 @@ sync_xray() {
 # VLESS DIRECT IMPORT LINK
 # ============================================================
 
+
 show_vless_links() {
     local username="$1"
     local uuid="$2"
@@ -132,6 +137,36 @@ show_vless_links() {
     echo
     echo "Copy salah satu link → Import from clipboard di V2RayNG."
     echo
+
+    # Telegram notification
+    telegram_message="NAGARA TUNNEL LITE
+
+VLESS ACCOUNT
+
+Username : $username
+UUID     : $uuid
+Server   : $domain
+
+VLESS WS TLS 443
+$vless_ws_tls
+
+VLESS WS 80
+$vless_ws_80
+
+VLESS gRPC TLS 443
+$vless_grpc_tls
+
+Service Name : vless-grpc"
+
+    if telegram_send "$telegram_message"; then
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${GREEN}✓ Link VLESS dikirim ke Telegram.${RESET}"
+        fi
+    else
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${YELLOW}⚠ Gagal mengirim link VLESS ke Telegram.${RESET}"
+        fi
+    fi
 
     echo "$vless_ws_tls" | xclip -selection clipboard 2>/dev/null || true
 }
