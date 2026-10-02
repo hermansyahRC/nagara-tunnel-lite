@@ -9,6 +9,10 @@ if [[ -f "$APP_DIR/config/config.conf" ]]; then
     source "$APP_DIR/config/config.conf"
 fi
 
+if [[ -f "$APP_DIR/bin/telegram-notify.sh" ]]; then
+    source "$APP_DIR/bin/telegram-notify.sh"
+fi
+
 RESET='\033[0m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -101,6 +105,31 @@ show_trojan_links() {
 
     echo "Copy link → Import from clipboard di V2RayNG."
     echo
+
+    # TELEGRAM_TROJAN_NOTIFICATION
+    telegram_message="NAGARA TUNNEL LITE
+
+TROJAN ACCOUNT
+
+Username : $username
+Password : $password
+Server   : $domain
+
+Trojan WS TLS 443
+$trojan_ws_tls
+
+Trojan WS 80
+$trojan_ws_80"
+
+    if telegram_send "$telegram_message"; then
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${GREEN}✓ Link Trojan dikirim ke Telegram.${RESET}"
+        fi
+    else
+        if [[ "${TELEGRAM_ENABLED:-false}" == "true" ]]; then
+            echo -e "${YELLOW}⚠ Gagal mengirim link Trojan ke Telegram.${RESET}"
+        fi
+    fi
 
     echo "$trojan_ws_tls" | xclip -selection clipboard 2>/dev/null || true
 }
