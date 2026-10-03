@@ -183,7 +183,7 @@ show_menu() {
         3) test_config ;;
         4) restart_nginx ;;
         5) stop_nginx ;;
-        0) return 0 ;;
+        0) exit 0 ;;
         *) echo; echo "✗ Pilihan tidak valid."; sleep 1 ;;
     esac
 }
