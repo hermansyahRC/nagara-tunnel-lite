@@ -761,6 +761,29 @@ SQL
     success "Database siap."
 }
 
+setup_auto_menu() {
+    log "Mengatur auto-menu SSH..."
+
+    local bashrc="/root/.bashrc"
+    touch "$bashrc"
+
+    if ! grep -Fq "NAGARA TUNNEL LITE AUTO MENU" "$bashrc"; then
+        cat >> "$bashrc" <<'EOF_NAGARA_AUTO_MENU'
+
+# >>> NAGARA TUNNEL LITE AUTO MENU >>>
+if [[ $- == *i* ]] && [[ -n "${SSH_CONNECTION:-}" ]] && [[ -z "${NAGARA_AUTO_MENU_SHOWN:-}" ]]; then
+    export NAGARA_AUTO_MENU_SHOWN=1
+    if [[ -x /usr/local/bin/menu ]]; then
+        /usr/local/bin/menu
+    fi
+fi
+# <<< NAGARA TUNNEL LITE AUTO MENU <<<
+EOF_NAGARA_AUTO_MENU
+    fi
+
+    success "Auto-menu SSH aktif."
+}
+
 create_nagara_command() {
     log "Membuat command Nagara..."
 
@@ -780,6 +803,7 @@ EOF_NAGARA
 
     success "Command 'menu' tersedia."
     success "Command 'nagara' tetap tersedia."
+    setup_auto_menu
 }
 
 enable_services() {

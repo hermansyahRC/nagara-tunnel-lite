@@ -191,7 +191,7 @@ show_menu() {
         2) check_domain ;;
         3) domain_status ;;
         4) bash "$APP_DIR/bin/nginx-manager.sh" ;;
-        0) return 0 ;;
+        0) exit 0 ;;
         *) echo; echo "✗ Pilihan tidak valid."; sleep 1 ;;
     esac
 }
