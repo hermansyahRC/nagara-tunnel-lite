@@ -761,6 +761,52 @@ SQL
     success "Database siap."
 }
 
+setup_expiry_watcher() {
+    log "Mengatur Xray Expiry Watcher..."
+    local watcher="${APP_DIR}/core/xray-expiry-watch.sh"
+    local service="/etc/systemd/system/nagara-expiry-watch.service"
+    local timer="/etc/systemd/system/nagara-expiry-watch.timer"
+
+    [[ -x "$watcher" ]] || chmod +x "$watcher" 2>/dev/null || true
+    [[ -x "$watcher" ]] || { warn "Expiry Watcher tidak ditemukan, dilewati."; return 0; }
+
+    cat > "$service" <<EOF_EXPIRY_SERVICE
+[Unit]
+Description=Nagara Tunnel Lite - Xray Expiry Watcher
+After=network.target xray.service
+Wants=xray.service
+
+[Service]
+Type=oneshot
+ExecStart=${watcher}
+User=root
+EOF_EXPIRY_SERVICE
+
+    cat > "$timer" <<EOF_EXPIRY_TIMER
+[Unit]
+Description=Nagara Tunnel Lite - Xray Expiry Watch Timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=nagara-expiry-watch.service
+
+[Install]
+WantedBy=timers.target
+EOF_EXPIRY_TIMER
+
+    chmod 644 "$service" "$timer"
+    systemctl daemon-reload
+    systemctl enable --now nagara-expiry-watch.timer >/dev/null 2>&1 || true
+
+    if systemctl is-active --quiet nagara-expiry-watch.timer; then
+        success "Xray Expiry Watcher aktif."
+    else
+        warn "Xray Expiry Watcher belum aktif."
+    fi
+}
+
 setup_auto_menu() {
     log "Mengatur auto-menu SSH..."
 
@@ -804,6 +850,7 @@ EOF_NAGARA
     success "Command 'menu' tersedia."
     success "Command 'nagara' tetap tersedia."
     setup_auto_menu
+    setup_expiry_watcher
 }
 
 enable_services() {
