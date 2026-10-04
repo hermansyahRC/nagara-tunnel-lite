@@ -149,7 +149,7 @@ create_trial() {
     suffix="$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)"
     username="trial-trojan-${suffix}"
     password="$(generate_password)"
-    expiry="$(date -d "+3 hours" "+%Y-%m-%d %H:%M:%S")"
+    expiry="$(date -d "+30 minutes" "+%Y-%m-%d %H:%M:%S")"
 
     echo "Username : $username"
     echo "Password : $password"
