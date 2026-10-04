@@ -150,27 +150,10 @@ for inbound in inbounds:
                 "path": "/trojan-ws"
             }
         }
-
     elif tag == "vmess-grpc":
-        # Keep existing VMess gRPC clients, then add
-        # all active VMess users so every VMess account
-        # can use the same gRPC transport.
-        settings = inbound.setdefault("settings", {})
-        existing_clients = settings.setdefault("clients", [])
-
-        existing_ids = {
-            client.get("id")
-            for client in existing_clients
-            if client.get("id")
-        }
-
-        for client in vmess_clients:
-            client_id = client.get("id")
-
-            if client_id and client_id not in existing_ids:
-                existing_clients.append(dict(client))
-                existing_ids.add(client_id)
-
+        # VMess gRPC memakai daftar VMess aktif dari database.
+        # Client lama/expired tidak dipertahankan.
+        inbound.setdefault("settings", {})["clients"] = vmess_clients
     elif tag == "vless-grpc":
         inbound.setdefault("settings", {})["clients"] = vless_clients
 
