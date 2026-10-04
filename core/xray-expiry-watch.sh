@@ -12,6 +12,20 @@ SYNC="$BASE_DIR/core/xray-sync.sh"
 
 expired_found=0
 
+# Tandai akun active yang sudah melewati masa berlaku sebagai expired.
+sqlite3 "$DB" "
+    UPDATE users
+    SET status='expired',
+        updated_at=CURRENT_TIMESTAMP
+    WHERE LOWER(status)='active'
+      AND expiry_date IS NOT NULL
+      AND (
+          (length(expiry_date)=10 AND expiry_date < date('now'))
+          OR
+          (length(expiry_date)>10 AND datetime(expiry_date) < datetime('now'))
+      );
+"
+
 while IFS= read -r username; do
     [[ -n "$username" ]] || continue
 
@@ -26,7 +40,7 @@ done < <(
     sqlite3 -noheader "$DB" "
         SELECT username
         FROM users
-        WHERE LOWER(status)='active'
+        WHERE LOWER(status) IN ('active','expired')
           AND expiry_date IS NOT NULL
           AND (
               (length(expiry_date)=10 AND expiry_date < date('now'))
